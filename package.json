@@ -1,0 +1,59 @@
+{
+	"name": "n8n-nodes-frappe-helpdesk",
+	"version": "0.1.0",
+	"description": "Nœud n8n pour Frappe Helpdesk : tickets, clients, équipes, priorités et types de tickets",
+	"license": "MIT",
+	"homepage": "https://github.com/tsnaketech/n8n-nodes-frappe-helpdesk#readme",
+	"keywords": [
+		"n8n-community-node-package",
+		"frappe",
+		"frappe-helpdesk",
+		"helpdesk",
+		"support",
+		"ticketing"
+	],
+	"author": {
+		"name": "tsnaketech",
+		"email": "poubello@outlook.com",
+		"url": "https://github.com/tsnaketech"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tsnaketech/n8n-nodes-frappe-helpdesk.git"
+	},
+	"bugs": {
+		"url": "https://github.com/tsnaketech/n8n-nodes-frappe-helpdesk/issues"
+	},
+	"scripts": {
+		"build": "n8n-node build",
+		"build:watch": "tsc --watch",
+		"dev": "n8n-node dev",
+		"lint": "n8n-node lint",
+		"lint:fix": "n8n-node lint --fix",
+		"release": "n8n-node release",
+		"prepublishOnly": "n8n-node prerelease"
+	},
+	"files": [
+		"dist"
+	],
+	"n8n": {
+		"n8nNodesApiVersion": 1,
+		"strict": true,
+		"credentials": [
+			"dist/credentials/FrappeApi.credentials.js"
+		],
+		"nodes": [
+			"dist/nodes/FrappeHelpdesk/FrappeHelpdesk.node.js"
+		]
+	},
+	"devDependencies": {
+		"@n8n/node-cli": "*",
+		"eslint": "9.39.4",
+		"prettier": "3.8.3",
+		"release-it": "20.2.0",
+		"typescript": "5.9.3"
+	},
+	"peerDependencies": {
+		"n8n-workflow": "*"
+	}
+}
