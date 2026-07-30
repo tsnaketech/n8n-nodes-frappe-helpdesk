@@ -58,7 +58,7 @@ Anfragen werden über den Header `Authorization: token {apiKey}:{apiSecret}` aut
 
 Lege ein Credential pro *Site* an (`Frappe – prod`, `Frappe – test`), nicht pro Anwendung. Siehe [docs/CREDENTIALS.md](docs/CREDENTIALS.md) für die vollständige Architektur, die Liste der nutzenden Nodes und die Frappe-Rollen, die jede Operation benötigt.
 
-> Der Benutzer, dessen Schlüssel du verwendest, muss ein **HD Agent** sein, damit die Operation **Assign** funktioniert — siehe [Ein Ticket einem Agenten zuweisen](#ein-ticket-einem-agenten-zuweisen).
+> Der Benutzer, dessen Schlüssel du verwendest, muss als Agent handeln können, damit die Operation **Assign** funktioniert — siehe [Ein Ticket einem Agenten zuweisen](#ein-ticket-einem-agenten-zuweisen).
 
 ## Operationen
 
@@ -103,15 +103,17 @@ Eine Zuweisung ist **keine** Feldänderung — deshalb eine eigene Operation sta
 Der Node ruft die Helpdesk-eigene Controller-Methode `assign_agent` über genau die REST-Route auf, die Frappe dafür bereitstellt:
 
 ```
-POST /api/resource/HD Ticket/{name}?run_method=assign_agent
-{ "agent": "agent@example.com" }
+POST /api/resource/HD Ticket/{name}
+{ "run_method": "assign_agent", "agent": "agent@example.com" }
 ```
+
+`run_method` reist im **Body** mit, neben den Argumenten der Methode — nicht im Query-String. Frappe baut `form_dict` aus dem JSON-Body neu auf, sobald einer vorhanden ist, und die Query-String-Parameter gehen dabei verloren: `?run_method=…` zusammen mit einem Body antwortet `KeyError: 'run_method'` (geprüft auf Frappe 15.116).
 
 Diese Methode kapselt `frappe.desk.form.assign_to.add` **und** löst die In-App-Benachrichtigung **HD Notification** aus, die die Helpdesk-Oberfläche dem Agenten anzeigt — was ein direktes `assign_to.add` übergehen würde.
 
 Zwei Konsequenzen:
 
-- **Der Benutzer der Zugangsdaten muss ein `HD Agent` sein.** `assign_agent` ist im Helpdesk mit `@agent_only` dekoriert, zusätzlich zu den üblichen Frappe-Berechtigungen. Die Rolle `Agent` allein genügt nicht: Es muss einen `HD Agent`-Datensatz für diesen Benutzer geben.
+- **Der Benutzer der Zugangsdaten muss als Agent handeln können** — und diese Prüfung hängt von der Version ab. Auf `develop` ist `assign_agent` mit `@agent_only` dekoriert; im veröffentlichten Helpdesk (geprüft auf 1.28.1) trägt sie nur `@frappe.whitelist()`, dort greifen also allein die üblichen Frappe-Berechtigungen. Wo die Prüfung vorhanden ist, akzeptiert `helpdesk.utils.is_agent()` eines von drei Dingen: `Administrator`, die Rolle `Agent` oder `Agent Manager`, oder einen `HD Agent`-Datensatz für diesen Benutzer. Die Rolle `Agent` genügt also — ein zusätzlicher `HD Agent` ist nicht nötig.
 - **Zuweisungen sind additiv.** Frappe hängt an `_assign` an und übergeht Duplikate stillschweigend, ein Ticket kann also mehrere Verantwortliche bekommen. Aktiviere **Replace Existing Assignees** in den *Assign Options*, um die bisherigen Zuweisungen zuerst zu entfernen — nur so lässt sich „dieser Agent und sonst niemand" ausdrücken.
 
 Erwartet wird eine **E-Mail-Adresse**, kein `HD Agent`-Code: `HD Agent` setzt den `name` seines eigenen Dokuments in `before_save` auf den verknüpften `User`, beide Zeichenketten sind also identisch.
@@ -190,6 +192,8 @@ Jedes Beispiel unten ist ein Node, den du in einen n8n-Workflow einfügen kannst
 
 Lässt du `status` weg, wendet der Helpdesk den `default_ticket_status` der Site an, bei einer Standardinstallation `Open`.
 
+Eine Falle, die vom Helpdesk kommt und nicht vom Node: `agent_group` zu setzen löst die **Assignment Rule** des Teams aus, und ein Team ohne Mitglieder lässt diese Regel mit `list index out of range` scheitern. Genau in diesem Zustand ist das Team `Billing`, das eine frische Installation anlegt. Gib dem Team Mitglieder — oder lass `agent_group` weg.
+
 ### Ticket — Status ändern
 
 ```json
@@ -233,7 +237,9 @@ Lässt du `status` weg, wendet der Helpdesk den `default_ticket_status` der Site
 
 `agent` ist die E-Mail-Adresse des Agenten. Mit ausgeschaltetem `replace` (Standard) wird der Agent zu den bereits Zugewiesenen *hinzugefügt*; eingeschaltet werden die bisherigen zuerst entfernt.
 
-Der Node gibt das nach der Zuweisung erneut gelesene Ticket zurück, damit `_assign` in der Ausgabe aktuell ist — `assign_agent` selbst antwortet mit einem leeren Umschlag.
+Der Node gibt das nach der Zuweisung erneut gelesene Ticket zurück — `assign_agent` selbst antwortet mit einem leeren Umschlag — und mischt `_assign` hinein.
+
+Dieses Nachladen ist nötig: `_assign` ist eine Spalte, die Frappe selbst pflegt, kein Feld des Doctypes, und `GET /api/resource/HD Ticket/{name}` baut seine Antwort aus den Doctype-Metadaten auf — liefert sie also nie mit. Nur eine Listenabfrage, die `_assign` in `fields` nennt, gibt sie zurück; genau diese zusätzliche Anfrage stellt der Node. Der Wert behält in beiden Fällen die Form, die Frappe speichert: ein JSON-kodiertes Array, `"[\"marie@acme.io\"]"`.
 
 ### Ticket — auflisten
 
@@ -359,6 +365,8 @@ Bei **Update** *ersetzt* die übergebene Liste die Teammitglieder; lass sie weg,
 ```
 
 Nützlich, um einen Wert vor dem Anlegen eines Tickets zu prüfen. Bei `HD Ticket Type` ist `priority` die Standardpriorität für Tickets dieses Typs, und `is_system` markiert die vom Helpdesk mitgelieferten Typen, die weder umbenannt noch gelöscht werden können.
+
+Achtung bei der Sortierspalte der Prioritäten, die sich von Version zu Version unterscheidet: der veröffentlichte Helpdesk (geprüft auf 1.28.1) führt ein Int `integer_value`, während `develop` es durch ein Select `level` ersetzt. Die falsche in `fields` zu nennen bringt ein `Field not permitted in query: …` — daher beschränkt sich der vom Node vorgeschlagene Platzhalter auf `description` und `disabled`, die in beiden vorhanden sind.
 
 ### Löschen
 

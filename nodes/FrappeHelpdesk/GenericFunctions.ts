@@ -260,12 +260,25 @@ export async function frappeMethodRequest<T = IDataObject>(
  * Runs a whitelisted *controller* method on an existing document.
  *
  * Frappe mounts this on the REST v1 resource route itself — `frappe/api/v1.py` declares
- * `Rule("/resource/<doctype>/<path:name>/", methods=["POST", "QUERY"], endpoint=execute_doc_method)`
- * — so the method name travels as the `run_method` query parameter and the method's own
- * arguments as the JSON body. `execute_doc_method` pops `run_method` out of `form_dict`
- * and spreads whatever is left as keyword arguments, which is why `args` must carry the
- * method parameters and nothing else: a stray key becomes an unexpected keyword argument
- * and Frappe answers 417.
+ * `Rule("/resource/<doctype>/<path:name>/", methods=["POST", "QUERY"], endpoint=execute_doc_method)`.
+ * The handler reads the method name from `form_dict`, pops it, then spreads whatever is
+ * left as keyword arguments:
+ *
+ * ```python
+ * method = method or frappe.form_dict.pop("run_method")
+ * ...
+ * return doc.run_method(method, **frappe.form_dict)
+ * ```
+ *
+ * `run_method` therefore has to travel **in the JSON body**, next to the method arguments —
+ * not in the query string. Frappe rebuilds `form_dict` from the request body when there is
+ * one, and the query-string parameters are lost in the process. Verified against Frappe
+ * 15.116: `?run_method=…` alone works, but as soon as a JSON body accompanies it the site
+ * answers `KeyError: 'run_method'`. Since every interesting method takes arguments, the
+ * query-string form is broken in practice.
+ *
+ * Consequence for callers: `args` must carry the method's parameters and nothing else. Any
+ * stray key becomes an unexpected keyword argument, and Frappe answers 417.
  *
  * `run_doc_method` under `/api/method/` looks like an alternative but is not one: it
  * carries no `@frappe.whitelist()` decorator in `frappe/handler.py`, so it is not
@@ -287,8 +300,8 @@ export async function frappeRunDocMethod<T = IDataObject>(
 		this,
 		'POST',
 		`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(documentName)}`,
-		args,
-		{ run_method: method },
+		{ run_method: method, ...args },
+		{},
 		itemIndex,
 	);
 }

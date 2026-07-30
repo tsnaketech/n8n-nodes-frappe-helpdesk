@@ -81,10 +81,14 @@ Pour Frappe Helpdesk, cela veut dire concrètement :
   contact du portail ne voit que ses propres tickets ;
 - créer ou modifier une `HD Team`, un `HD Customer` ou la configuration des priorités
   demande `Agent Manager` ;
-- **l'opération Assign exige que l'utilisateur des clés soit lui-même un `HD Agent`** :
-  la méthode `HDTicket.assign_agent` est décorée `@agent_only` côté Helpdesk, en plus des
-  permissions Frappe habituelles. Un utilisateur avec le rôle `Agent` mais sans
-  enregistrement `HD Agent` se verra refuser l'appel.
+- **l'opération Assign demande que l'utilisateur des clés puisse agir comme un agent**, et
+  ce contrôle dépend de la version : sur la branche `develop`, `HDTicket.assign_agent` est
+  décorée `@agent_only` ; sur le Helpdesk publié (vérifié sur 1.28.1) elle ne porte que
+  `@frappe.whitelist()` et seules les permissions Frappe habituelles s'appliquent. Quand le
+  contrôle est là, `helpdesk.utils.is_agent()` accepte trois choses au choix :
+  `Administrator`, le rôle `Agent` ou `Agent Manager`, ou l'existence d'un enregistrement
+  `HD Agent` pour cet utilisateur. Le rôle `Agent` suffit donc — il n'y a pas besoin de créer
+  un `HD Agent` en plus.
 
 Une erreur 403 renvoyée par le nœud vient donc presque toujours des rôles, pas du
 credential. Le message d'erreur Frappe est remonté tel quel pour permettre de trancher.

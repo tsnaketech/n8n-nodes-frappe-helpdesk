@@ -64,7 +64,8 @@ et `develop`. À ne pas deviner :
 Deux doctypes sont **lus sans être exposés** comme resources, uniquement pour alimenter les
 listes déroulantes : `HD Ticket Status` et `HD Agent`.
 
-Quatre pièges vérifiés dans la source, à ne pas réintroduire :
+Sept pièges vérifiés dans la source puis sur une instance réelle (Frappe 15.116 /
+Helpdesk 1.28.1), à ne pas réintroduire :
 
 - **`HD Ticket.status` est un `Link` vers `HD Ticket Status`, pas un `Select`.** Les statuts
   sont des enregistrements ; `Open` / `Replied` / `Resolved` / `Closed` ne sont que les
@@ -76,8 +77,13 @@ Quatre pièges vérifiés dans la source, à ne pas réintroduire :
 - **L'assignation ne passe pas par le CRUD.** `_assign` n'est pas un champ stocké : c'est
   une colonne maintenue par `frappe.desk.form.assign_to`, doublée d'un `ToDo`. Le nœud
   appelle donc la méthode de contrôleur `HDTicket.assign_agent`, qui ajoute en plus la
-  `HD Notification` affichée à l'agent. Elle est décorée `@agent_only` : **l'utilisateur des
-  clés API doit être un `HD Agent`**, le rôle `Agent` ne suffit pas.
+  `HD Notification` affichée à l'agent. Le contrôle de droits dépend de la version : sur
+  `develop` la méthode est décorée `@agent_only`, sur la branche `main` et le Helpdesk publié
+  (vérifié sur 1.28.1) elle ne porte que `@frappe.whitelist()`. Et `helpdesk.utils.is_agent()`
+  accepte `Administrator`, le rôle `Agent`, le rôle `Agent Manager` **ou** un enregistrement
+  `HD Agent` — n'importe lequel des quatre suffit. Ne pas réécrire que le rôle `Agent` est
+  insuffisant : c'était faux, vérifié en lisant `helpdesk/utils.py` et en assignant depuis un
+  site sans aucun `HD Agent`.
 - **Le changement de statut, lui, n'a aucun endpoint custom.** Rien dans `helpdesk/api/` ne
   s'en charge ; la logique vit dans le `on_update` de `HD Ticket`. Un `PUT` ordinaire suffit
   et déclenche bien le recalcul SLA. Ne pas inventer d'appel `/api/method/` pour ça.
@@ -85,6 +91,29 @@ Quatre pièges vérifiés dans la source, à ne pas réintroduire :
   document *est* le libellé (`Urgent`, `Question`). Il n'y a pas de champ titre séparé. Même
   logique de nommage par champ sur `HD Team` (`team_name`) et `HD Customer`
   (`customer_name`) — renommer l'un renomme le document et tous les liens qui y pointent.
+- **`run_method` voyage dans le corps, jamais dans la query string.** Frappe reconstruit
+  `form_dict` à partir du corps JSON dès qu'il y en a un, et perd les paramètres de la query
+  string au passage : `?run_method=…` accompagné d'un corps répond `KeyError: 'run_method'`.
+  `frappeRunDocMethod` envoie donc `{ run_method, ...args }` en corps, sans `qs`. Corollaire :
+  `args` ne doit porter *que* les paramètres de la méthode, toute clé parasite devient un
+  argument nommé inattendu et Frappe répond 417.
+- **`GET /api/resource/{doctype}/{name}` ne renvoie pas `_assign`.** La route document unique
+  construit sa réponse à partir des métadonnées du doctype, et `_assign` est une colonne, pas
+  un champ — la charge utile ne contient aucune clé préfixée par `_`. Seule une requête de
+  liste nommant `_assign` dans `fields` la retourne, d'où `fetchAssignees` dans le nœud.
+  Sans elle, l'option `Replace Existing Assignees` serait un no-op silencieux et la sortie de
+  `assign` ne montrerait pas l'assignation qu'elle vient de faire.
+- **Les colonnes des doctypes de configuration bougent entre versions.** Sur `HD Ticket
+  Priority`, la version publiée porte un Int `integer_value` là où `develop` a un Select
+  `level`. Nommer un champ absent dans `fields` fait répondre `Field not permitted in
+  query: …`. Les placeholders exposés dans l'UI ne doivent citer que des champs communs aux
+  deux branches — vérifier sur une instance avant d'en ajouter un.
+
+Un piège qui n'est pas dans le nœud mais que les tests rencontrent : renseigner `agent_group`
+à la création déclenche l'`Assignment Rule` de l'équipe, et une équipe sans membres fait
+échouer cette règle sur `list index out of range`. L'équipe `Billing` d'une installation
+neuve est dans cet état. Ce n'est pas un bug à corriger ici, juste une précondition de
+données côté Helpdesk.
 
 `HD Ticket` utilise `autoname: ".####"` : les IDs sont des compteurs nus (`214`), sans
 préfixe. Le doctype **n'est pas soumissible** — contrairement à ceux du package HRMS, il n'y
@@ -180,6 +209,17 @@ l'utilisateur (nouvelle opération, nouveau credential, prérequis) doit être r
 `docs/CREDENTIALS.md` tient le tableau des nœuds consommateurs du credential partagé. Il est
 dupliqué dans les packages CRM et HRMS : quand l'état d'un nœud de la suite change, penser à
 le mettre à jour là-bas aussi.
+
+## GitHub Actions
+
+Les workflows GitHub Actions doivent toujours utiliser des versions existantes et stables
+des actions officielles. **Ne jamais inventer ou supposer une version majeure.**
+
+- Vérifier la dernière version disponible avant de modifier un workflow.
+- Préférer un tag de version (`@v4`, `@v5`, etc.) ou, idéalement, un commit SHA lorsque la
+  reproductibilité ou la sécurité est importante.
+- Si la version n'est pas certaine, consulter le dépôt officiel de l'action plutôt que de
+  la deviner.
 
 ## Publication
 

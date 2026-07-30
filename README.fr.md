@@ -58,7 +58,7 @@ Les requêtes sont authentifiées par le header `Authorization: token {apiKey}:{
 
 Créez un credential par *site* (`Frappe – prod`, `Frappe – recette`), pas par application. Voir [docs/CREDENTIALS.md](docs/CREDENTIALS.md) pour l'architecture complète, la liste des nœuds consommateurs et les rôles Frappe requis par chaque opération.
 
-> L'utilisateur dont vous utilisez les clés doit être un **HD Agent** pour que l'opération **Assign** fonctionne — voir [Assigner un ticket à un agent](#assigner-un-ticket-à-un-agent).
+> L'utilisateur dont vous utilisez les clés doit pouvoir agir comme un agent pour que l'opération **Assign** fonctionne — voir [Assigner un ticket à un agent](#assigner-un-ticket-à-un-agent).
 
 ## Opérations
 
@@ -103,15 +103,17 @@ L'assignation n'est **pas** une mise à jour de champ, d'où une opération déd
 Le nœud appelle la méthode de contrôleur `assign_agent` du Helpdesk, via la route REST que Frappe monte exactement pour cet usage :
 
 ```
-POST /api/resource/HD Ticket/{name}?run_method=assign_agent
-{ "agent": "agent@example.com" }
+POST /api/resource/HD Ticket/{name}
+{ "run_method": "assign_agent", "agent": "agent@example.com" }
 ```
+
+`run_method` voyage dans le **corps** de la requête, à côté des arguments de la méthode — et non dans la query string. Frappe reconstruit `form_dict` à partir du corps JSON dès qu'il y en a un, et les paramètres de la query string sont perdus au passage : `?run_method=…` accompagné d'un corps répond `KeyError: 'run_method'` (vérifié sur Frappe 15.116).
 
 Cette méthode encapsule `frappe.desk.form.assign_to.add` **et** déclenche la notification interne **HD Notification** que l'interface Helpdesk affiche à l'agent — ce qu'un `assign_to.add` direct ne ferait pas.
 
 Deux conséquences :
 
-- **L'utilisateur du credential doit être un `HD Agent`.** `assign_agent` est décorée `@agent_only` côté Helpdesk, en plus des permissions Frappe habituelles. Le rôle `Agent` ne suffit pas : il faut un enregistrement `HD Agent` pour cet utilisateur.
+- **L'utilisateur du credential doit pouvoir agir comme un agent** — et ce contrôle dépend de la version. Sur `develop`, `assign_agent` est décorée `@agent_only` ; sur le Helpdesk publié (vérifié sur 1.28.1) elle ne porte que `@frappe.whitelist()`, seules les permissions Frappe habituelles s'appliquent alors. Là où le contrôle existe, `helpdesk.utils.is_agent()` accepte trois choses au choix : `Administrator`, le rôle `Agent` ou `Agent Manager`, ou un enregistrement `HD Agent` pour cet utilisateur. Le rôle `Agent` suffit donc — inutile de créer un `HD Agent` en plus.
 - **L'assignation est additive.** Frappe ajoute à `_assign` et ignore silencieusement un doublon : un ticket peut donc se retrouver avec plusieurs responsables. Activez **Replace Existing Assignees** dans *Assign Options* pour vider les assignés en place d'abord — c'est le seul moyen d'exprimer « cet agent et lui seul ».
 
 La valeur attendue est une **adresse email**, pas un code `HD Agent` : `HD Agent` fixe lui-même le `name` de son document à la valeur du `User` lié dans `before_save`, les deux chaînes sont donc identiques.
@@ -190,6 +192,8 @@ Chaque exemple ci-dessous est un nœud à coller dans un workflow n8n. Remplacez
 
 Omettez `status` et le Helpdesk applique le `default_ticket_status` du site, soit `Open` sur une installation standard.
 
+Un piège qui vient du Helpdesk et non du nœud : renseigner `agent_group` déclenche l'**Assignment Rule** de l'équipe, et une équipe sans membres fait échouer cette règle sur `list index out of range`. L'équipe `Billing` créée par une installation neuve est exactement dans cet état. Donnez des membres à l'équipe, ou laissez `agent_group` de côté.
+
 ### Ticket — changement de statut
 
 ```json
@@ -233,7 +237,9 @@ Omettez `status` et le Helpdesk applique le `default_ticket_status` du site, soi
 
 `agent` est l'email de l'agent. Avec `replace` désactivé (le défaut), l'agent est *ajouté* aux assignés existants ; activé, les assignés en place sont retirés d'abord.
 
-Le nœud renvoie le ticket relu après l'assignation, pour que `_assign` soit à jour dans la sortie — `assign_agent` répond de son côté avec une enveloppe vide.
+Le nœud renvoie le ticket relu après l'assignation — `assign_agent` répond de son côté avec une enveloppe vide — avec `_assign` réinjecté dedans.
+
+Cette réinjection est nécessaire : `_assign` est une colonne que Frappe maintient lui-même, pas un champ du doctype, et `GET /api/resource/HD Ticket/{name}` construit sa réponse à partir des métadonnées du doctype — il ne la renvoie donc jamais. Seule une requête de liste nommant `_assign` dans `fields` la retourne, d'où la requête supplémentaire que fait le nœud. La valeur conserve dans les deux cas la forme que Frappe stocke : un tableau encodé en JSON, `"[\"marie@acme.io\"]"`.
 
 ### Ticket — liste
 
@@ -359,6 +365,8 @@ En **Update**, la liste fournie *remplace* les membres de l'équipe ; ne la rens
 ```
 
 Pratique pour valider une valeur avant de créer un ticket. Sur `HD Ticket Type`, `priority` est la priorité appliquée par défaut aux tickets de ce type, et `is_system` marque les types livrés par le Helpdesk, qui ne peuvent être ni renommés ni supprimés.
+
+Attention à la colonne d'ordre des priorités, qui change d'une version à l'autre : le Helpdesk publié (vérifié sur 1.28.1) porte un Int `integer_value`, alors que `develop` le remplace par un Select `level`. Nommer la mauvaise dans `fields` vaut un `Field not permitted in query: …`, d'où le placeholder proposé par le nœud qui s'en tient à `description` et `disabled` — présents dans les deux.
 
 ### Suppression
 

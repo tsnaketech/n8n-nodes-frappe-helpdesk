@@ -12,6 +12,12 @@ import { documentIdField, getManyFields, readOperationsFor } from './CommonDescr
  * `Low` at install time; the rest is a Helpdesk settings screen, not an automation job.
  *
  * The doctype uses `autoname: "Prompt"`, so the document `name` *is* the label.
+ *
+ * Careful with the ordering column, which differs between versions: the released Helpdesk
+ * (verified on 1.28.1) carries an Int `integer_value`, whereas the `develop` branch replaces
+ * it with a Select `level` holding Urgent/High/Medium/Low. Requesting the wrong one in
+ * `fields` makes Frappe answer `Field not permitted in query: …`, so the placeholder below
+ * only names `description` and `disabled` — the two fields present in both.
  */
 export const ticketPriorityDescription: INodeProperties[] = [
 	readOperationsFor('ticketPriority', 'ticket priority'),
@@ -20,5 +26,5 @@ export const ticketPriorityDescription: INodeProperties[] = [
 		'Champ « name » de la priorité, qui vaut son libellé, par ex. Urgent.',
 		['get'],
 	),
-	...getManyFields('ticketPriority', 'name,level,disabled'),
+	...getManyFields('ticketPriority', 'name,description,disabled'),
 ];

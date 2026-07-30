@@ -58,7 +58,7 @@ Las peticiones se autentican con la cabecera `Authorization: token {apiKey}:{api
 
 Crea una credencial por *sitio* (`Frappe – prod`, `Frappe – pruebas`), no por aplicación. Consulta [docs/CREDENTIALS.md](docs/CREDENTIALS.md) para la arquitectura completa, la lista de nodos consumidores y los roles de Frappe que requiere cada operación.
 
-> El usuario cuyas claves utilices debe ser un **HD Agent** para que funcione la operación **Assign** — ver [Asignar un ticket a un agente](#asignar-un-ticket-a-un-agente).
+> El usuario cuyas claves utilices tiene que poder actuar como agente para que funcione la operación **Assign** — ver [Asignar un ticket a un agente](#asignar-un-ticket-a-un-agente).
 
 ## Operaciones
 
@@ -103,15 +103,17 @@ La asignación **no** es una actualización de campo, de ahí que tenga su propi
 El nodo llama al método de controlador `assign_agent` del Helpdesk, a través de la ruta REST que Frappe monta exactamente para esto:
 
 ```
-POST /api/resource/HD Ticket/{name}?run_method=assign_agent
-{ "agent": "agent@example.com" }
+POST /api/resource/HD Ticket/{name}
+{ "run_method": "assign_agent", "agent": "agent@example.com" }
 ```
+
+`run_method` viaja en el **cuerpo** de la petición, junto a los argumentos del método, no en la query string. Frappe reconstruye `form_dict` a partir del cuerpo JSON en cuanto hay uno, y los parámetros de la query string se pierden por el camino: `?run_method=…` acompañado de un cuerpo responde `KeyError: 'run_method'` (verificado en Frappe 15.116).
 
 Ese método envuelve `frappe.desk.form.assign_to.add` **y** genera la notificación interna **HD Notification** que la interfaz del Helpdesk muestra al agente — algo que un `assign_to.add` directo se saltaría.
 
 Dos consecuencias:
 
-- **El usuario de la credencial debe ser un `HD Agent`.** `assign_agent` está decorada con `@agent_only` en el Helpdesk, además de los permisos habituales de Frappe. El rol `Agent` no basta: tiene que existir un registro `HD Agent` para ese usuario.
+- **El usuario de la credencial tiene que poder actuar como agente**, y esa comprobación depende de la versión. En `develop`, `assign_agent` está decorada con `@agent_only`; en el Helpdesk publicado (comprobado en 1.28.1) solo lleva `@frappe.whitelist()`, así que únicamente aplican los permisos habituales de Frappe. Donde la comprobación existe, `helpdesk.utils.is_agent()` acepta cualquiera de tres cosas: `Administrator`, el rol `Agent` o `Agent Manager`, o un registro `HD Agent` para ese usuario. El rol `Agent` basta, por tanto — no hace falta crear además un `HD Agent`.
 - **La asignación es aditiva.** Frappe añade a `_assign` e ignora silenciosamente los duplicados, así que un ticket puede acabar con varios responsables. Activa **Replace Existing Assignees** en *Assign Options* para vaciar antes los asignados actuales — es la única forma de expresar «este agente y ningún otro».
 
 El valor esperado es una **dirección de correo**, no un código `HD Agent`: `HD Agent` fija el `name` de su propio documento al `User` enlazado en `before_save`, de modo que ambas cadenas coinciden.
@@ -190,6 +192,8 @@ Cada ejemplo siguiente es un nodo que puedes pegar en un workflow de n8n. Sustit
 
 Si omites `status`, el Helpdesk aplica el `default_ticket_status` del sitio, que es `Open` en una instalación estándar.
 
+Una trampa que viene del Helpdesk y no del nodo: rellenar `agent_group` dispara la **Assignment Rule** del equipo, y un equipo sin miembros hace fallar esa regla con `list index out of range`. El equipo `Billing` que crea una instalación nueva está justo en ese estado. Dale miembros al equipo, o deja `agent_group` fuera.
+
 ### Ticket — cambiar de estado
 
 ```json
@@ -233,7 +237,9 @@ Si omites `status`, el Helpdesk aplica el `default_ticket_status` del sitio, que
 
 `agent` es el correo del agente. Con `replace` desactivado (el valor por defecto) el agente se *añade* a quienes ya estuvieran asignados; activado, los asignados actuales se retiran primero.
 
-El nodo devuelve el ticket releído tras la asignación, para que `_assign` esté actualizado en la salida — `assign_agent` responde por su parte con un sobre vacío.
+El nodo devuelve el ticket releído tras la asignación — `assign_agent` responde por su parte con un sobre vacío — con `_assign` incorporado.
+
+Esa incorporación es necesaria: `_assign` es una columna que Frappe mantiene por su cuenta, no un campo del doctype, y `GET /api/resource/HD Ticket/{name}` construye su respuesta a partir de los metadatos del doctype, así que nunca la devuelve. Solo una consulta de lista que nombre `_assign` en `fields` la retorna, de ahí la petición adicional que hace el nodo. El valor conserva en ambos casos la forma que Frappe almacena: un array codificado en JSON, `"[\"marie@acme.io\"]"`.
 
 ### Ticket — listar
 
@@ -359,6 +365,8 @@ En **Update**, la lista que proporciones *sustituye* a los miembros del equipo; 
 ```
 
 Útil para validar un valor antes de crear un ticket. En `HD Ticket Type`, `priority` es la prioridad aplicada por defecto a los tickets de ese tipo, e `is_system` marca los tipos que trae el Helpdesk, que no se pueden renombrar ni eliminar.
+
+Cuidado con la columna de orden de las prioridades, que cambia de una versión a otra: el Helpdesk publicado (comprobado en 1.28.1) lleva un Int `integer_value`, mientras que `develop` lo sustituye por un Select `level`. Nombrar la equivocada en `fields` cuesta un `Field not permitted in query: …`, de ahí que el placeholder que propone el nodo se limite a `description` y `disabled`, presentes en ambas.
 
 ### Eliminar
 

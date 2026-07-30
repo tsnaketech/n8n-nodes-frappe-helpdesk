@@ -23,12 +23,7 @@ import {
 	frappeMethodRequest,
 	frappeRunDocMethod,
 } from './GenericFunctions';
-import {
-	AGENT_DOCTYPE,
-	DEFAULT_TICKET_STATUSES,
-	getDoctype,
-	TICKET_STATUS_DOCTYPE,
-} from './types';
+import { AGENT_DOCTYPE, DEFAULT_TICKET_STATUSES, getDoctype, TICKET_STATUS_DOCTYPE } from './types';
 
 /**
  * Fields exposed at the top level, outside the « Additional Fields » collection, because the
@@ -98,9 +93,7 @@ function buildTeamUsers(body: IDataObject): void {
 		return;
 	}
 
-	body.users = users.map((user) =>
-		typeof user === 'string' ? { user } : (user as IDataObject),
-	);
+	body.users = users.map((user) => (typeof user === 'string' ? { user } : (user as IDataObject)));
 }
 
 /**
@@ -119,6 +112,37 @@ function parseAssignees(raw: unknown): string[] {
 	} catch {
 		return [];
 	}
+}
+
+/**
+ * Reads the assignees of a document.
+ *
+ * `_assign` is a table column Frappe maintains itself, not a docfield, and
+ * `GET /api/resource/{doctype}/{name}` builds its answer from the doctype metadata — so the
+ * single-document route never returns it (verified on Frappe 15.116 / Helpdesk 1.28.1, where
+ * the payload carries no underscore-prefixed key at all). A list query naming it explicitly
+ * does return it, which is the only way to read it over the REST API.
+ */
+async function fetchAssignees(
+	this: IExecuteFunctions,
+	doctype: string,
+	documentName: string,
+	itemIndex: number,
+): Promise<string[]> {
+	const rows = (await frappeApiRequest.call(
+		this,
+		'GET',
+		`/api/resource/${encodeURIComponent(doctype)}`,
+		{},
+		{
+			filters: [['name', '=', documentName]],
+			fields: ['name', '_assign'],
+			limit_page_length: 1,
+		},
+		itemIndex,
+	)) as IDataObject[];
+
+	return parseAssignees(Array.isArray(rows) && rows.length > 0 ? rows[0]._assign : undefined);
 }
 
 /** Builds a `{ name, value }` list out of Frappe records, sorted for a stable dropdown. */
@@ -366,10 +390,7 @@ export class FrappeHelpdesk implements INodeType {
 					// duplicates silently. Emptying the list first is the only way to express
 					// « this agent and no other », so it is opt-in rather than the default.
 					if (assignOptions.replace === true) {
-						const current = (await frappeApiRequest.call(this, 'GET', path, {}, {}, i)) as
-							IDataObject;
-
-						for (const assignee of parseAssignees(current._assign)) {
+						for (const assignee of await fetchAssignees.call(this, doctype, documentId, i)) {
 							if (assignee === agent) continue;
 							await frappeMethodRequest.call(
 								this,
@@ -387,9 +408,22 @@ export class FrappeHelpdesk implements INodeType {
 					await frappeRunDocMethod.call(this, doctype, documentId, 'assign_agent', { agent }, i);
 
 					// The method itself answers with an empty envelope, so the ticket is read back:
-					// a workflow branching on the assignment wants the document, `_assign` included.
-					const assigned = await frappeApiRequest.call(this, 'GET', path, {}, {}, i);
-					returnData.push({ json: assigned as IDataObject, pairedItem: { item: i } });
+					// a workflow branching on the assignment wants the document. `_assign` has to
+					// be fetched separately — see `fetchAssignees` — and is merged in so the output
+					// actually shows who the ticket now belongs to. It is re-encoded as the JSON
+					// string Frappe itself stores, so that `_assign` carries the same shape here as
+					// in a Get Many asking for it.
+					const assigned = (await frappeApiRequest.call(
+						this,
+						'GET',
+						path,
+						{},
+						{},
+						i,
+					)) as IDataObject;
+					const assignees = await fetchAssignees.call(this, doctype, documentId, i);
+					assigned._assign = JSON.stringify(assignees);
+					returnData.push({ json: assigned, pairedItem: { item: i } });
 				} else if (operation === 'getAll') {
 					const returnAll = this.getNodeParameter('returnAll', i) as boolean;
 					const options = this.getNodeParameter('options', i, {}) as IDataObject;
