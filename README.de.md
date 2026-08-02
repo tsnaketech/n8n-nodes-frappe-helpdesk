@@ -393,7 +393,7 @@ Der Node gibt `{ "success": true, "doctype": "HD Ticket", "name": "214" }` aus. 
 
 ## Kompatibilität
 
-Getestet mit n8n 1.x und Frappe Framework **v15 und v16** (16.29.0) mit Frappe Helpdesk 1.28.1. Der Node nutzt nur die Standard-REST-Endpunkte unter `/api/resource` sowie die `run_method`-Route, die Frappe auf demselben Pfad bereitstellt — er sollte daher mit jeder Helpdesk-Version funktionieren, die die oben genannten Doctype-Namen beibehält.
+Getestet mit **n8n 2.x** (2.32.7) und Frappe Framework **v15 und v16** (16.29.0) mit Frappe Helpdesk 1.28.1. Das Paket wird vom Custom-Directory-Loader von n8n 2 fehlerfrei geladen, und die vollständige Operationssuite wurde aus einem n8n-2-Container gegen eine reale Instanz erneut durchlaufen. Der Node nutzt nur die Standard-REST-Endpunkte unter `/api/resource` sowie die `run_method`-Route, die Frappe auf demselben Pfad bereitstellt — er sollte daher mit jeder Helpdesk-Version funktionieren, die die oben genannten Doctype-Namen beibehält.
 
 Frappe 16 bringt eine zweite REST-API unter `/api/v2` mit (`/api/v2/document/…`, `/api/v2/method/…`), mit eigenem Envelope und eigenen Pagination-Parametern. Der Node bleibt bewusst bei v1: Sie wird auf 16 weiterhin voll unterstützt, und jedes Verhalten, auf das dieser Node baut — der `{ "data": … }`-Envelope, `limit_start`/`limit_page_length`, die `run_method`-Route, `_assign`, das sich nur über eine Listenabfrage lesen lässt — wurde auf 16.29.0 erneut geprüft und ist unverändert.
 

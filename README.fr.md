@@ -393,7 +393,7 @@ Le nœud renvoie `{ "success": true, "doctype": "HD Ticket", "name": "214" }`. F
 
 ## Compatibilité
 
-Testé avec n8n 1.x et Frappe Framework **v15 et v16** (16.29.0) sous Frappe Helpdesk 1.28.1. Le nœud n'utilise que les endpoints REST standard `/api/resource` et la route `run_method` que Frappe monte sur le même chemin : il devrait fonctionner avec toute version du Helpdesk qui conserve les noms de doctypes listés plus haut.
+Testé avec **n8n 2.x** (2.32.7) et Frappe Framework **v15 et v16** (16.29.0) sous Frappe Helpdesk 1.28.1. Le paquet est chargé sans erreur par le chargeur de répertoire custom de n8n 2, et la suite complète des opérations a été rejouée depuis un conteneur n8n 2 contre une instance réelle. Le nœud n'utilise que les endpoints REST standard `/api/resource` et la route `run_method` que Frappe monte sur le même chemin : il devrait fonctionner avec toute version du Helpdesk qui conserve les noms de doctypes listés plus haut.
 
 Frappe 16 ajoute une seconde API REST sous `/api/v2` (`/api/v2/document/…`, `/api/v2/method/…`), avec sa propre enveloppe et ses propres paramètres de pagination. Le nœud reste volontairement sur la v1 : elle est toujours pleinement supportée sur 16, et tous les comportements dont dépend ce nœud — l'enveloppe `{ "data": … }`, `limit_start`/`limit_page_length`, la route `run_method`, `_assign` lisible seulement par une requête de liste — ont été revérifiés sur 16.29.0 et sont inchangés.
 
