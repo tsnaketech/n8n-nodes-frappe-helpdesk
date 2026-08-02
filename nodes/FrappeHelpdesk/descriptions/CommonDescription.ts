@@ -12,7 +12,7 @@ import type { INodeProperties } from 'n8n-workflow';
 export const DOCUMENT_OPERATIONS = ['get', 'update', 'delete'];
 
 /**
- * Removes fields from a shared list. Used to build « Additional Fields » (create) out of
+ * Removes fields from a shared list. Used to build "Additional Fields" (create) out of
  * the full list, excluding the fields already exposed at the top level because they are
  * required.
  */
@@ -20,8 +20,17 @@ export function omitFields(fields: INodeProperties[], names: string[]): INodePro
 	return fields.filter((field) => !names.includes(field.name));
 }
 
-/** The five CRUD operations, specialised for a given resource. */
-export function operationsFor(resource: string, singular: string): INodeProperties {
+/**
+ * The five CRUD operations, specialised for a given resource.
+ *
+ * `plural` is a parameter rather than `${singular}s` because that naive rule produces
+ * "ticket prioritys".
+ */
+export function operationsFor(
+	resource: string,
+	singular: string,
+	plural = `${singular}s`,
+): INodeProperties {
 	return {
 		displayName: 'Operation',
 		name: 'operation',
@@ -32,31 +41,31 @@ export function operationsFor(resource: string, singular: string): INodeProperti
 			{
 				name: 'Create',
 				value: 'create',
-				description: `Créer un(e) ${singular}`,
+				description: `Create a ${singular}`,
 				action: `Create a ${singular}`,
 			},
 			{
 				name: 'Delete',
 				value: 'delete',
-				description: `Supprimer un(e) ${singular}`,
+				description: `Delete a ${singular}`,
 				action: `Delete a ${singular}`,
 			},
 			{
 				name: 'Get',
 				value: 'get',
-				description: `Récupérer un(e) ${singular}`,
+				description: `Get a ${singular}`,
 				action: `Get a ${singular}`,
 			},
 			{
 				name: 'Get Many',
 				value: 'getAll',
-				description: `Récupérer plusieurs ${singular}s`,
-				action: `Get many ${singular}s`,
+				description: `Get many ${plural}`,
+				action: `Get many ${plural}`,
 			},
 			{
 				name: 'Update',
 				value: 'update',
-				description: `Mettre à jour un(e) ${singular}`,
+				description: `Update a ${singular}`,
 				action: `Update a ${singular}`,
 			},
 		],
@@ -67,12 +76,16 @@ export function operationsFor(resource: string, singular: string): INodeProperti
 /**
  * CRUD plus the two ticket-specific actions.
  *
- * Only HD Ticket uses this. « Assign » is not a field update: it goes through the
+ * Only HD Ticket uses this. "Assign" is not a field update: it goes through the
  * `assign_agent` controller method, which creates the ToDo, fills `_assign` and notifies
- * the agent. « Change Status » *is* a field update, but deserves its own operation because
+ * the agent. "Change Status" *is* a field update, but deserves its own operation because
  * it is the single most common thing a workflow does to a ticket.
  */
-export function ticketOperations(resource: string, singular: string): INodeProperties {
+export function ticketOperations(
+	resource: string,
+	singular: string,
+	plural = `${singular}s`,
+): INodeProperties {
 	return {
 		displayName: 'Operation',
 		name: 'operation',
@@ -83,43 +96,43 @@ export function ticketOperations(resource: string, singular: string): INodePrope
 			{
 				name: 'Assign',
 				value: 'assign',
-				description: `Assigner un(e) ${singular} à un agent`,
+				description: `Assign a ${singular} to an agent`,
 				action: `Assign a ${singular} to an agent`,
 			},
 			{
 				name: 'Change Status',
 				value: 'changeStatus',
-				description: `Changer le statut d'un(e) ${singular}`,
+				description: `Change the status of a ${singular}`,
 				action: `Change the status of a ${singular}`,
 			},
 			{
 				name: 'Create',
 				value: 'create',
-				description: `Créer un(e) ${singular}`,
+				description: `Create a ${singular}`,
 				action: `Create a ${singular}`,
 			},
 			{
 				name: 'Delete',
 				value: 'delete',
-				description: `Supprimer un(e) ${singular}`,
+				description: `Delete a ${singular}`,
 				action: `Delete a ${singular}`,
 			},
 			{
 				name: 'Get',
 				value: 'get',
-				description: `Récupérer un(e) ${singular}`,
+				description: `Get a ${singular}`,
 				action: `Get a ${singular}`,
 			},
 			{
 				name: 'Get Many',
 				value: 'getAll',
-				description: `Récupérer plusieurs ${singular}s`,
-				action: `Get many ${singular}s`,
+				description: `Get many ${plural}`,
+				action: `Get many ${plural}`,
 			},
 			{
 				name: 'Update',
 				value: 'update',
-				description: `Mettre à jour un(e) ${singular}`,
+				description: `Update a ${singular}`,
 				action: `Update a ${singular}`,
 			},
 		],
@@ -132,7 +145,11 @@ export function ticketOperations(resource: string, singular: string): INodePrope
  * a site defines them once, and tickets link to them. Creating them from a workflow would
  * silently reshape the SLA matrix, so the node only reads them.
  */
-export function readOperationsFor(resource: string, singular: string): INodeProperties {
+export function readOperationsFor(
+	resource: string,
+	singular: string,
+	plural = `${singular}s`,
+): INodeProperties {
 	return {
 		displayName: 'Operation',
 		name: 'operation',
@@ -143,14 +160,14 @@ export function readOperationsFor(resource: string, singular: string): INodeProp
 			{
 				name: 'Get',
 				value: 'get',
-				description: `Récupérer un(e) ${singular}`,
+				description: `Get a ${singular}`,
 				action: `Get a ${singular}`,
 			},
 			{
 				name: 'Get Many',
 				value: 'getAll',
-				description: `Récupérer plusieurs ${singular}s`,
-				action: `Get many ${singular}s`,
+				description: `Get many ${plural}`,
+				action: `Get many ${plural}`,
 			},
 		],
 		default: 'getAll',
@@ -178,7 +195,7 @@ export function documentIdField(
 }
 
 /**
- * Pagination and read options for « Get Many ».
+ * Pagination and read options for "Get Many".
  *
  * `returnAll` triggers automatic pagination through `limit_start`; otherwise `limit` is
  * sent as-is in `limit_page_length`.
@@ -219,7 +236,7 @@ export function getManyFields(resource: string, fieldsPlaceholder: string): INod
 					default: '',
 					placeholder: fieldsPlaceholder,
 					description:
-						'Liste des champs à retourner, séparés par des virgules. Accepte aussi un tableau JSON. Par défaut Frappe ne renvoie que « name ».',
+						'Comma-separated list of fields to return. A JSON array works too. Frappe returns only "name" by default.',
 				},
 				{
 					displayName: 'Filters (JSON)',
@@ -228,7 +245,7 @@ export function getManyFields(resource: string, fieldsPlaceholder: string): INod
 					default: '',
 					placeholder: '{"status": "Open"}',
 					description:
-						'Filtres au format Frappe : objet {"champ": "valeur"} ou tableau [["champ","opérateur","valeur"]], par exemple [["priority","in",["Urgent","High"]]]',
+						'Filters in Frappe format: an object {"field": "value"} or an array [["field","operator","value"]], for example [["priority","in",["Urgent","High"]]]',
 				},
 				{
 					displayName: 'Offset',
@@ -236,8 +253,7 @@ export function getManyFields(resource: string, fieldsPlaceholder: string): INod
 					type: 'number',
 					default: 0,
 					typeOptions: { minValue: 0 },
-					description:
-						'Nombre d\'enregistrements à ignorer (limit_start). Ignoré lorsque « Return All » est actif.',
+					description: 'Number of records to skip (limit_start). Ignored when "Return All" is on.',
 				},
 				{
 					displayName: 'Or Filters (JSON)',
@@ -245,14 +261,14 @@ export function getManyFields(resource: string, fieldsPlaceholder: string): INod
 					type: 'json',
 					default: '',
 					placeholder: '[["status","=","Open"],["status","=","Replied"]]',
-					description: 'Filtres combinés en OU, même format que « Filters »',
+					description: 'Filters combined with OR, same format as "Filters"',
 				},
 				{
 					displayName: 'Sort Field',
 					name: 'sortField',
 					type: 'string',
 					default: 'modified',
-					description: 'Champ utilisé pour le tri (order_by)',
+					description: 'Field to sort on (order_by)',
 				},
 				{
 					displayName: 'Sort Order',
@@ -263,7 +279,7 @@ export function getManyFields(resource: string, fieldsPlaceholder: string): INod
 						{ name: 'Descending', value: 'desc' },
 					],
 					default: 'desc',
-					description: 'Sens du tri',
+					description: 'Sort direction',
 				},
 			],
 		},

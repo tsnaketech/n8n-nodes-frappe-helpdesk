@@ -36,7 +36,7 @@ const SITE_URL_EXPRESSION =
  *
  * The internal name `frappeApi` and the field names are identical to the ones shipped by
  * the `n8n-nodes-frappe-crm` and `n8n-nodes-frappe-hrms` packages, on purpose: a user
- * running several of them sees a single « Frappe API » credential type and configures
+ * running several of them sees a single "Frappe API" credential type and configures
  * their site once. Any change here has to be mirrored there.
  */
 export class FrappeApi implements ICredentialType {
@@ -55,9 +55,9 @@ export class FrappeApi implements ICredentialType {
 			type: 'string',
 			default: '',
 			required: true,
-			placeholder: 'https://mon-site.frappe.cloud',
+			placeholder: 'https://my-site.frappe.cloud',
 			description:
-				"URL racine du site Frappe. Le nœud y ajoute lui-même /api/resource ou /api/method. Coller l'URL affichée par le navigateur fonctionne aussi : un chemin d'application final (/helpdesk, /crm, /hr, /lms, /app…) et le slash final sont retirés.",
+				'Root URL of the Frappe site. The node appends /api/resource or /api/method itself. Pasting the URL the browser displays works too: a trailing application path (/helpdesk, /crm, /hr, /lms, /app…) and the trailing slash are stripped.',
 		},
 		{
 			displayName: 'API Key',
@@ -66,7 +66,7 @@ export class FrappeApi implements ICredentialType {
 			default: '',
 			required: true,
 			description:
-				'Clé générée depuis le profil utilisateur Frappe : Settings > API Access > Generate Keys',
+				'Key generated from the Frappe user profile: Settings > API Access > Generate Keys',
 			typeOptions: { password: true },
 		},
 		{
@@ -76,7 +76,7 @@ export class FrappeApi implements ICredentialType {
 			typeOptions: { password: true },
 			default: '',
 			required: true,
-			description: 'Secret affiché une seule fois, au moment de la génération des clés',
+			description: 'Secret shown only once, when the keys are generated',
 		},
 	];
 
@@ -102,7 +102,7 @@ export class FrappeApi implements ICredentialType {
 					key: 'message',
 					value: 'Guest',
 					message:
-						"Connexion anonyme : le site a répondu mais n'a pas reconnu les clés. Vérifiez l'API Key et l'API Secret.",
+						'Anonymous connection: the site answered but did not recognise the keys. Check the API Key and the API Secret.',
 				},
 			},
 		],

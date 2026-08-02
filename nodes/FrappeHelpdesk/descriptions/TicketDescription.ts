@@ -22,7 +22,7 @@ const ticketFields: INodeProperties[] = [
 		name: 'contact',
 		type: 'string',
 		default: '',
-		description: 'Lien vers un enregistrement du doctype Contact du core Frappe',
+		description: 'Link to a record of the core Frappe Contact doctype',
 	},
 	{
 		displayName: 'Customer',
@@ -30,7 +30,7 @@ const ticketFields: INodeProperties[] = [
 		type: 'string',
 		default: '',
 		description:
-			'Champ « name » du client HD Customer. Frappe le déduit du contact lorsqu\'il est laissé vide.',
+			'The "name" of the HD Customer record. Frappe derives it from the contact when left empty.',
 	},
 	{
 		displayName: 'Description',
@@ -38,7 +38,7 @@ const ticketFields: INodeProperties[] = [
 		type: 'string',
 		typeOptions: { rows: 5 },
 		default: '',
-		description: 'Corps du ticket. Champ Text Editor côté Frappe : il accepte du HTML.',
+		description: 'Ticket body. A Text Editor field in Frappe: it accepts HTML.',
 	},
 	{
 		displayName: 'Priority Name or ID',
@@ -55,8 +55,7 @@ const ticketFields: INodeProperties[] = [
 		type: 'string',
 		placeholder: 'client@example.com',
 		default: '',
-		description:
-			'Email du demandeur. Frappe s\'en sert pour rattacher le ticket à un contact existant.',
+		description: 'Requester email. Frappe uses it to attach the ticket to an existing contact.',
 	},
 	{
 		displayName: 'SLA',
@@ -64,7 +63,7 @@ const ticketFields: INodeProperties[] = [
 		type: 'string',
 		default: '',
 		description:
-			'Champ « name » d\'une HD Service Level Agreement. Laisser vide laisse Frappe appliquer la SLA par défaut.',
+			'The "name" of an HD Service Level Agreement. Leaving it empty lets Frappe apply the default SLA.',
 	},
 	{
 		displayName: 'Status Name or ID',
@@ -113,11 +112,11 @@ export const ticketDescription: INodeProperties[] = [
 		default: '',
 		required: true,
 		displayOptions: { show: { resource: ['ticket'], operation: ['create'] } },
-		description: 'Objet du ticket. Seul champ que le doctype déclare obligatoire.',
+		description: 'Ticket subject. The only field the doctype declares as required.',
 	},
 	documentIdField(
 		'ticket',
-		'Champ « name » du ticket. Sur HD Ticket c\'est un entier auto-incrémenté, par ex. 214.',
+		'The ticket\'s "name". On HD Ticket it is an auto-incremented integer, e.g. 214.',
 		['get', 'update', 'delete', 'assign', 'changeStatus'],
 	),
 	{

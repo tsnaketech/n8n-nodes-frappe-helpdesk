@@ -126,7 +126,7 @@ export function parseFrappeError(body: unknown, statusCode: number): string {
 		const cleaned = stripHtml(body);
 		// A full HTML error page teaches the user nothing useful.
 		if (cleaned.length > 0 && cleaned.length < 500) return cleaned;
-		return `La requête Frappe a échoué (HTTP ${statusCode})`;
+		return `The Frappe request failed (HTTP ${statusCode})`;
 	}
 
 	if (body !== null && typeof body === 'object') {
@@ -148,7 +148,7 @@ export function parseFrappeError(body: unknown, statusCode: number): string {
 		}
 	}
 
-	return `La requête Frappe a échoué (HTTP ${statusCode})`;
+	return `The Frappe request failed (HTTP ${statusCode})`;
 }
 
 /** Serializes the structured values (filters, fields, or_filters) Frappe expects as JSON. */
@@ -215,7 +215,7 @@ export async function frappeApiRequest<T = IDataObject>(
 			itemIndex,
 			description:
 				statusCode === 401 || statusCode === 403
-					? "Vérifiez l'API Key/Secret du credential et les permissions du rôle associé sur ce doctype."
+					? "Check the credential's API Key/Secret and the permissions its role has on this doctype."
 					: undefined,
 		});
 	}

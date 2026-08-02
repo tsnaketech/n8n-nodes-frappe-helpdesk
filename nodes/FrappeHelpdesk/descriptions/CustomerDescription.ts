@@ -19,7 +19,7 @@ const customerFields: INodeProperties[] = [
 		name: 'country',
 		type: 'string',
 		default: '',
-		description: 'Lien vers un enregistrement du doctype Country, par ex. France.',
+		description: 'Link to a record of the Country doctype, e.g. France',
 	},
 	{
 		displayName: 'Customer Name',
@@ -27,7 +27,7 @@ const customerFields: INodeProperties[] = [
 		type: 'string',
 		default: '',
 		description:
-			'Nom du client. Il sert de « name » au document : le modifier renomme l\'enregistrement et met à jour les tickets qui y sont liés.',
+			'Customer name. It doubles as the document "name": changing it renames the record and updates the tickets linked to it.',
 	},
 	{
 		displayName: 'Customer Type',
@@ -39,7 +39,7 @@ const customerFields: INodeProperties[] = [
 			{ name: 'Partnership', value: 'Partnership' },
 		],
 		default: 'Company',
-		description: 'Nature juridique du client',
+		description: 'Legal nature of the customer',
 	},
 	{
 		displayName: 'Domain',
@@ -48,22 +48,21 @@ const customerFields: INodeProperties[] = [
 		placeholder: 'acme.io',
 		default: '',
 		description:
-			'Domaine email du client. Frappe rattache automatiquement les tickets dont l\'expéditeur porte ce domaine.',
+			'Customer email domain. Frappe automatically attaches tickets whose sender carries this domain.',
 	},
 	{
 		displayName: 'Image',
 		name: 'image',
 		type: 'string',
 		default: '',
-		description: 'URL du logo, telle que stockée par Frappe, par ex. /files/acme.png.',
+		description: 'Logo URL, as stored by Frappe, e.g. /files/acme.png',
 	},
 	{
 		displayName: 'Primary Contact',
 		name: 'primary_contact',
 		type: 'string',
 		default: '',
-		description:
-			'Champ « name » d\'un Contact. Frappe en dérive l\'email et le téléphone du client.',
+		description: 'The "name" of a Contact. Frappe derives the customer email and phone from it.',
 	},
 ];
 
@@ -79,12 +78,9 @@ export const customerDescription: INodeProperties[] = [
 		required: true,
 		displayOptions: { show: { resource: ['customer'], operation: ['create'] } },
 		description:
-			'Nom du client. Le doctype se nomme d\'après ce champ, il est donc indispensable même si Frappe ne le marque pas « reqd ».',
+			'Customer name. The doctype names itself after this field, so it is indispensable even though Frappe does not mark it "reqd".',
 	},
-	documentIdField(
-		'customer',
-		'Champ « name » du client, qui vaut son nom commercial, par ex. Acme SAS.',
-	),
+	documentIdField('customer', 'The customer\'s "name", which is its trading name, e.g. Acme SAS.'),
 	{
 		displayName: 'Additional Fields',
 		name: 'additionalFields',

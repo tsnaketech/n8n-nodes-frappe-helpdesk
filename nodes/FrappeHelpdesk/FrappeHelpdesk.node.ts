@@ -26,7 +26,7 @@ import {
 import { AGENT_DOCTYPE, DEFAULT_TICKET_STATUSES, getDoctype, TICKET_STATUS_DOCTYPE } from './types';
 
 /**
- * Fields exposed at the top level, outside the « Additional Fields » collection, because the
+ * Fields exposed at the top level, outside the "Additional Fields" collection, because the
  * doctype marks them `reqd` — or, for `customer_name`, because the doctype is named after
  * them and Frappe cannot insert the record without one. Kept here rather than in the
  * descriptions so that the execute loop has a single place to read them from.
@@ -54,17 +54,17 @@ function parseJsonParameter(
 	} catch {
 		throw new NodeOperationError(
 			context.getNode(),
-			`Le paramètre « ${parameterName} » n'est pas du JSON valide : ${value}`,
+			`The "${parameterName}" parameter is not valid JSON: ${value}`,
 			{
 				itemIndex,
 				description:
-					'Attendu : un objet {"champ": "valeur"} ou un tableau [["champ","opérateur","valeur"]].',
+					'Expected an object {"field": "value"} or an array [["field","operator","value"]].',
 			},
 		);
 	}
 }
 
-/** Accepte « name,status » comme ["name","status"]. */
+/** Accepts "name,status" as ["name","status"]. */
 function parseFieldList(value: string): string[] {
 	const trimmed = value.trim();
 	if (trimmed.startsWith('[')) {
@@ -81,7 +81,7 @@ function parseFieldList(value: string): string[] {
  *
  * The field is a Table MultiSelect over `HD Team Member`, whose only column is `user`, so
  * Frappe wants `[{ "user": "agent@example.com" }]` and not a bare array of strings. An
- * empty selection is dropped rather than sent as `[]`: that keeps « Update » from emptying
+ * empty selection is dropped rather than sent as `[]`: that keeps "Update" from emptying
  * a team the user did not mean to touch, and the doctype refuses an empty table anyway.
  */
 function buildTeamUsers(body: IDataObject): void {
@@ -192,7 +192,7 @@ export class FrappeHelpdesk implements INodeType {
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
-		description: 'Lire et écrire les tickets, clients et équipes de Frappe Helpdesk',
+		description: 'Read and write Frappe Helpdesk tickets, customers and teams',
 		defaults: {
 			name: 'Frappe Helpdesk',
 		},
@@ -388,7 +388,7 @@ export class FrappeHelpdesk implements INodeType {
 
 					// Frappe assignment is additive — `assign_to.add` appends to `_assign` and skips
 					// duplicates silently. Emptying the list first is the only way to express
-					// « this agent and no other », so it is opt-in rather than the default.
+					// "this agent and no other", so it is opt-in rather than the default.
 					if (assignOptions.replace === true) {
 						for (const assignee of await fetchAssignees.call(this, doctype, documentId, i)) {
 							if (assignee === agent) continue;
@@ -466,7 +466,7 @@ export class FrappeHelpdesk implements INodeType {
 				} else {
 					throw new NodeOperationError(
 						this.getNode(),
-						`L'opération « ${operation} » n'est pas supportée`,
+						`The "${operation}" operation is not supported`,
 						{ itemIndex: i },
 					);
 				}

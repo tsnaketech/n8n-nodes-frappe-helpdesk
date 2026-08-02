@@ -12,7 +12,7 @@ import { documentIdField, getManyFields, omitFields, operationsFor } from './Com
  * a Link to `User`. Frappe expects it as an array of rows, so the node turns the selected
  * emails into `[{ "user": "agent@example.com" }, …]` before sending. The doctype marks the
  * table `reqd`, which is why the field sits at the top level on create rather than inside
- * « Additional Fields ».
+ * "Additional Fields".
  */
 const teamFields: INodeProperties[] = [
 	{
@@ -45,7 +45,7 @@ const teamFields: INodeProperties[] = [
 		type: 'string',
 		default: '',
 		description:
-			'Nom de l\'équipe. Il sert de « name » au document : le modifier renomme l\'enregistrement et met à jour les tickets qui y sont liés.',
+			'Team name. It doubles as the document "name": changing it renames the record and updates the tickets linked to it.',
 	},
 ];
 
@@ -60,7 +60,7 @@ export const teamDescription: INodeProperties[] = [
 		default: '',
 		required: true,
 		displayOptions: { show: { resource: ['team'], operation: ['create'] } },
-		description: 'Nom de l\'équipe, qui sert aussi de « name » au document',
+		description: 'Team name, which doubles as the document "name"',
 	},
 	{
 		displayName: 'Agent Names or IDs',
@@ -73,7 +73,7 @@ export const teamDescription: INodeProperties[] = [
 		description:
 			'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 	},
-	documentIdField('team', 'Champ « name » de l\'équipe, qui vaut son nom, par ex. Billing.'),
+	documentIdField('team', 'The team\'s "name", which is the team name itself, e.g. Billing.'),
 	{
 		displayName: 'Additional Fields',
 		name: 'additionalFields',

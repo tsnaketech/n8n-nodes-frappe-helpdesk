@@ -169,6 +169,16 @@ exigerait deux fichiers distincts, donc une teinte différente sur l'un des thè
   sans raison.
 - TypeScript en `strict`, avec `noUnusedLocals` et `noImplicitReturns` : du code mort ou une
   branche sans `return` casse le build.
+- **Langues : le code est en anglais, le suivi de projet en français.** Tout ce que n8n
+  affiche — `displayName`, `description`, `action`, `placeholder`, messages de
+  `NodeOperationError` et `NodeApiError`, champs du credential — est en anglais, comme les
+  commentaires et le README principal. Le français est réservé à ce fichier et aux READMEs
+  traduits (`README.fr.md`, `.es.md`, `.de.md`). Ne pas réintroduire de descriptions
+  françaises : le nœud a longtemps eu des `displayName` anglais et des `description`
+  françaises, avec des gabarits mixtes du genre « Créer un(e) customer ». Éviter aussi les
+  guillemets `« »` dans une prose anglaise.
+- Les gabarits d'opérations de `CommonDescription.ts` prennent un `plural` explicite :
+  `${singular}s` produisait « ticket prioritys ».
 - Importer les types depuis `n8n-workflow` en `import type`, et les valeurs
   (`NodeConnectionTypes`, `NodeApiError`, `NodeOperationError`) en import normal.
 
