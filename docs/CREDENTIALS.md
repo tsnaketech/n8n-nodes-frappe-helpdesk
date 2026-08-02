@@ -27,7 +27,7 @@ différemment. Un seul credential veut dire :
 | **Frappe Helpdesk** | `n8n-nodes-frappe-helpdesk` | `HD Ticket`, `HD Customer`, `HD Team`, `HD Ticket Priority`, `HD Ticket Type` (+ `HD Ticket Status` et `HD Agent` en lecture) | livré (ce dépôt)        |
 | **Frappe CRM**      | `n8n-nodes-frappe-crm`      | `CRM Lead`, `CRM Deal`, `Contact`, `CRM Organization`, `CRM Task`, `FCRM Note`                                              | livré                   |
 | **Frappe HRMS**     | `n8n-nodes-frappe-hrms`     | `Employee`, `Leave Application`, `Attendance`, `Expense Claim`, `Salary Slip`, `Job Opening`, `Job Applicant`, `Job Offer`   | livré                   |
-| **Frappe LMS**      | à créer                     | `LMS Course`, …                                                                                                             | à venir                 |
+| **Frappe Learning** | `n8n-nodes-frappe-learning` | `LMS Course`, `Course Chapter`, `Course Lesson`, `LMS Batch`, `LMS Enrollment`, `LMS Batch Enrollment`, `LMS Quiz`, `LMS Assignment`, `LMS Assignment Submission`, `LMS Certificate` (+ `LMS Quiz Submission` et `LMS Course Progress` en lecture) | livré                   |
 
 Le nœud Helpdesk **ne définit aucune variante** du credential : sa description déclare
 `credentials: [{ name: 'frappeApi', required: true }]`, exactement comme les nœuds CRM et
@@ -71,6 +71,15 @@ Note pratique : `normalizeSiteUrl()` retire un éventuel chemin de SPA en fin d'
 (`/helpdesk`, `/crm`, `/hr`, `/lms`, `/app`…) ainsi que le slash final. Coller
 `http://helpdesk.localhost:8000/helpdesk`, l'URL affichée par le navigateur, fonctionne donc
 aussi bien que la racine du site — l'API vit toujours à la racine.
+
+Ce nettoyage n'est pas cosmétique, et il doit s'appliquer **aussi au test de connexion**.
+Sous un chemin de SPA, `/helpdesk/api/method/…` n'atteint jamais l'API : le routeur front
+intercepte la requête et répond **200 avec `index.html`** (vérifié sur Frappe 16.29.0). La
+règle `Guest` ne trouve alors aucune clé `message` à comparer, et n8n annonce un credential
+valide — y compris avec des clés totalement fausses. Le `baseURL` du bloc `test` applique
+donc la même liste de chemins que `SPA_MOUNT_PATHS`, recopiée dans le fichier du credential
+pour qu'il reste autonome. Un chemin **inconnu** (`/support`) est inoffensif par
+comparaison : il renvoie un 404 et le test échoue correctement.
 
 ## Permissions côté Frappe
 

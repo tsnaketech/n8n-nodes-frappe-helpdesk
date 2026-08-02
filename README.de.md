@@ -52,6 +52,8 @@ Der Node handelt **als dieser Benutzer**: Er erbt dessen Rollen und Berechtigung
 
 Anfragen werden über den Header `Authorization: token {apiKey}:{apiSecret}` authentifiziert. Nutze **Test**, um die Verbindung zu prüfen: Der Aufruf geht an `/api/method/frappe.auth.get_logged_user` und schlägt fehl, wenn die Site als `Guest` antwortet — genau das liefert Frappe, wenn die Schlüssel nicht erkannt werden.
 
+Das abschließende `/helpdesk` wird aus einem konkreten Grund entfernt: `/api/…` existiert nur an der Site-Wurzel, und unter einem App-Pfad fängt der Frontend-Router die Anfrage ab und antwortet **200 mit `index.html`** statt mit einem Fehler. Bevor diese Bereinigung auch für den Verbindungstest galt, ließ eine Site URL mit `/helpdesk` am Ende **Test** selbst mit völlig falschen Schlüsseln erfolgreich erscheinen. Ein unbekannter Pfad wie `/support` ist im Vergleich harmlos: Er liefert einen sauberen 404.
+
 ### Ein Credential für alle Frappe-Nodes
 
 `frappeApi` ist bewusst **nicht** Helpdesk-spezifisch. Frappe authentifiziert einen *Benutzer auf einer Site*, keine Anwendung: Derselbe API-Schlüssel gilt für Frappe Helpdesk, Frappe CRM, Frappe HR und Frappe LMS, die alle auf derselben Site laufen und denselben `/api`-Endpunkt teilen.
@@ -107,7 +109,7 @@ POST /api/resource/HD Ticket/{name}
 { "run_method": "assign_agent", "agent": "agent@example.com" }
 ```
 
-`run_method` reist im **Body** mit, neben den Argumenten der Methode — nicht im Query-String. Frappe baut `form_dict` aus dem JSON-Body neu auf, sobald einer vorhanden ist, und die Query-String-Parameter gehen dabei verloren: `?run_method=…` zusammen mit einem Body antwortet `KeyError: 'run_method'` (geprüft auf Frappe 15.116).
+`run_method` reist im **Body** mit, neben den Argumenten der Methode — nicht im Query-String. Frappe baut `form_dict` aus dem JSON-Body neu auf, sobald einer vorhanden ist, und die Query-String-Parameter gehen dabei verloren: `?run_method=…` zusammen mit einem Body antwortet `KeyError: 'run_method'` (geprüft auf Frappe 15.116 und erneut auf 16.29.0).
 
 Diese Methode kapselt `frappe.desk.form.assign_to.add` **und** löst die In-App-Benachrichtigung **HD Notification** aus, die die Helpdesk-Oberfläche dem Agenten anzeigt — was ein direktes `assign_to.add` übergehen würde.
 
@@ -391,7 +393,9 @@ Der Node gibt `{ "success": true, "doctype": "HD Ticket", "name": "214" }` aus. 
 
 ## Kompatibilität
 
-Getestet mit n8n 1.x und Frappe Framework v15 mit Frappe Helpdesk. Der Node nutzt nur die Standard-REST-Endpunkte unter `/api/resource` sowie die `run_method`-Route, die Frappe auf demselben Pfad bereitstellt — er sollte daher mit jeder Helpdesk-Version funktionieren, die die oben genannten Doctype-Namen beibehält.
+Getestet mit n8n 1.x und Frappe Framework **v15 und v16** (16.29.0) mit Frappe Helpdesk 1.28.1. Der Node nutzt nur die Standard-REST-Endpunkte unter `/api/resource` sowie die `run_method`-Route, die Frappe auf demselben Pfad bereitstellt — er sollte daher mit jeder Helpdesk-Version funktionieren, die die oben genannten Doctype-Namen beibehält.
+
+Frappe 16 bringt eine zweite REST-API unter `/api/v2` mit (`/api/v2/document/…`, `/api/v2/method/…`), mit eigenem Envelope und eigenen Pagination-Parametern. Der Node bleibt bewusst bei v1: Sie wird auf 16 weiterhin voll unterstützt, und jedes Verhalten, auf das dieser Node baut — der `{ "data": … }`-Envelope, `limit_start`/`limit_page_length`, die `run_method`-Route, `_assign`, das sich nur über eine Listenabfrage lesen lässt — wurde auf 16.29.0 erneut geprüft und ist unverändert.
 
 Ein versionsabhängiger Punkt: **`HD Ticket.status` muss ein Link auf `HD Ticket Status` sein.** Das ist auf `main` wie auf `develop` der Fall. Auf einem Helpdesk, der alt genug ist, um `status` noch als `Select` zu deklarieren, fällt das Status-Dropdown auf die vier Standardbezeichnungen zurück und alles Übrige funktioniert weiter.
 

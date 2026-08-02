@@ -52,6 +52,8 @@ Le nœud agit **en tant que cet utilisateur** : il hérite de ses rôles et de s
 
 Les requêtes sont authentifiées par le header `Authorization: token {apiKey}:{apiSecret}`. Utilisez **Test** pour valider la connexion : l'appel vise `/api/method/frappe.auth.get_logged_user` et échoue si le site répond en tant que `Guest`, ce que Frappe renvoie quand les clés ne sont pas reconnues.
 
+Le `/helpdesk` final est retiré pour une raison concrète : `/api/…` n'existe qu'à la racine du site, et sous un chemin d'application la requête est interceptée par le routeur front, qui répond **200 avec `index.html`** au lieu d'une erreur. Avant que ce nettoyage ne soit appliqué aussi au test de connexion, une Site URL finissant par `/helpdesk` faisait réussir **Test** même avec des clés totalement fausses. Un chemin inconnu comme `/support` est inoffensif en comparaison : il renvoie un 404 franc.
+
 ### Un seul credential pour tous les nœuds Frappe
 
 `frappeApi` n'est volontairement **pas** spécifique au Helpdesk. Frappe authentifie un *utilisateur sur un site*, pas une application : la même clé API vaut pour Frappe Helpdesk, Frappe CRM, Frappe HR et Frappe LMS, qui vivent sur le même site et partagent le même endpoint `/api`.
@@ -107,7 +109,7 @@ POST /api/resource/HD Ticket/{name}
 { "run_method": "assign_agent", "agent": "agent@example.com" }
 ```
 
-`run_method` voyage dans le **corps** de la requête, à côté des arguments de la méthode — et non dans la query string. Frappe reconstruit `form_dict` à partir du corps JSON dès qu'il y en a un, et les paramètres de la query string sont perdus au passage : `?run_method=…` accompagné d'un corps répond `KeyError: 'run_method'` (vérifié sur Frappe 15.116).
+`run_method` voyage dans le **corps** de la requête, à côté des arguments de la méthode — et non dans la query string. Frappe reconstruit `form_dict` à partir du corps JSON dès qu'il y en a un, et les paramètres de la query string sont perdus au passage : `?run_method=…` accompagné d'un corps répond `KeyError: 'run_method'` (vérifié sur Frappe 15.116, puis de nouveau sur 16.29.0).
 
 Cette méthode encapsule `frappe.desk.form.assign_to.add` **et** déclenche la notification interne **HD Notification** que l'interface Helpdesk affiche à l'agent — ce qu'un `assign_to.add` direct ne ferait pas.
 
@@ -391,7 +393,9 @@ Le nœud renvoie `{ "success": true, "doctype": "HD Ticket", "name": "214" }`. F
 
 ## Compatibilité
 
-Testé avec n8n 1.x et Frappe Framework v15 sous Frappe Helpdesk. Le nœud n'utilise que les endpoints REST standard `/api/resource` et la route `run_method` que Frappe monte sur le même chemin : il devrait fonctionner avec toute version du Helpdesk qui conserve les noms de doctypes listés plus haut.
+Testé avec n8n 1.x et Frappe Framework **v15 et v16** (16.29.0) sous Frappe Helpdesk 1.28.1. Le nœud n'utilise que les endpoints REST standard `/api/resource` et la route `run_method` que Frappe monte sur le même chemin : il devrait fonctionner avec toute version du Helpdesk qui conserve les noms de doctypes listés plus haut.
+
+Frappe 16 ajoute une seconde API REST sous `/api/v2` (`/api/v2/document/…`, `/api/v2/method/…`), avec sa propre enveloppe et ses propres paramètres de pagination. Le nœud reste volontairement sur la v1 : elle est toujours pleinement supportée sur 16, et tous les comportements dont dépend ce nœud — l'enveloppe `{ "data": … }`, `limit_start`/`limit_page_length`, la route `run_method`, `_assign` lisible seulement par une requête de liste — ont été revérifiés sur 16.29.0 et sont inchangés.
 
 Un point sensible à la version : **`HD Ticket.status` doit être un Link vers `HD Ticket Status`**. C'est le cas sur `main` comme sur `develop`. Sur un Helpdesk assez ancien pour déclarer encore `status` comme un `Select`, la liste des statuts retombe sur les quatre libellés par défaut et le reste continue de fonctionner.
 

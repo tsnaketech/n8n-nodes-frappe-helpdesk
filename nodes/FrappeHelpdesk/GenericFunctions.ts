@@ -280,9 +280,26 @@ export async function frappeMethodRequest<T = IDataObject>(
  * Consequence for callers: `args` must carry the method's parameters and nothing else. Any
  * stray key becomes an unexpected keyword argument, and Frappe answers 417.
  *
- * `run_doc_method` under `/api/method/` looks like an alternative but is not one: it
- * carries no `@frappe.whitelist()` decorator in `frappe/handler.py`, so it is not
- * reachable over HTTP.
+ * `POST /api/method/run_doc_method` with `{ dt, dn, method, args }` is a genuine
+ * alternative, contrary to what this comment claimed until now. It carries no
+ * `@frappe.whitelist()` decorator, which makes it look unreachable, but `frappe/handler.py`
+ * exempts it by name:
+ *
+ * ```python
+ * if method != run_doc_method:
+ * 	is_whitelisted(method)
+ * 	is_valid_http_method(method)
+ * ```
+ *
+ * Present on the `version-15`, `version-16` and `develop` branches. It differs from the
+ * route used here on two points: it loads the document with `check_permission=True`, so it
+ * only needs **read** access where this one calls `doc.check_permission("write")`, and it
+ * parses `args` as JSON instead of flattening it into `form_dict`, so numbers stay numbers.
+ *
+ * The resource route is kept here on purpose: the Helpdesk methods it drives are writes
+ * anyway, so the stricter permission costs nothing, and this form is the one already
+ * verified against a live site. The Frappe Insights package takes the other route, because
+ * running a query is a read. See `n8n-nodes-frappe-insights` if you need that behaviour.
  */
 export async function frappeRunDocMethod<T = IDataObject>(
 	this: IExecuteFunctions,

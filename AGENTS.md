@@ -44,7 +44,7 @@ docs/CREDENTIALS.md                           Architecture du credential partag�
 ```
 
 `GenericFunctions.ts` est volontairement dépourvu de logique Helpdesk : c'est la couche que
-le futur nœud LMS importera. Toute logique propre à un doctype va dans
+les autres nœuds Frappe recopient à l'identique. Toute logique propre à un doctype va dans
 `FrappeHelpdesk.node.ts`. À partir d'un deuxième nœud dans **ce** package, déplacer ce
 fichier vers `nodes/shared/`.
 
@@ -64,7 +64,7 @@ et `develop`. À ne pas deviner :
 Deux doctypes sont **lus sans être exposés** comme resources, uniquement pour alimenter les
 listes déroulantes : `HD Ticket Status` et `HD Agent`.
 
-Sept pièges vérifiés dans la source puis sur une instance réelle (Frappe 15.116 /
+Huit pièges vérifiés dans la source puis sur une instance réelle (Frappe 15.116 puis 16.29.0 /
 Helpdesk 1.28.1), à ne pas réintroduire :
 
 - **`HD Ticket.status` est un `Link` vers `HD Ticket Status`, pas un `Select`.** Les statuts
@@ -108,6 +108,15 @@ Helpdesk 1.28.1), à ne pas réintroduire :
   `level`. Nommer un champ absent dans `fields` fait répondre `Field not permitted in
   query: …`. Les placeholders exposés dans l'UI ne doivent citer que des champs communs aux
   deux branches — vérifier sur une instance avant d'en ajouter un.
+- **Sous un chemin de SPA, l'API répond 200 avec du HTML.** `/helpdesk/api/method/…` n'atteint
+  jamais l'API : le routeur front sert `index.html` avec un 200, quelles que soient les clés
+  d'authentification et même avec `Accept: application/json`. Un chemin *inconnu* (`/support`),
+  lui, renvoie un franc 404. C'est pour ça que `normalizeSiteUrl()` retire les chemins de
+  `SPA_MOUNT_PATHS` **et** que le `baseURL` du bloc `test` du credential applique la même
+  liste : sans ça, une Site URL finissant par `/helpdesk` faisait passer le test de connexion
+  au vert avec des clés fausses. La liste est volontairement dupliquée dans
+  `FrappeApi.credentials.ts`, qui doit rester autonome pour être recopié tel quel dans les
+  autres packages Frappe.
 
 Un piège qui n'est pas dans le nœud mais que les tests rencontrent : renseigner `agent_group`
 à la création déclenche l'`Assignment Rule` de l'équipe, et une équipe sans membres fait

@@ -52,6 +52,8 @@ The n8n node acts as that user, so it inherits that user's roles and permissions
 
 Requests are authenticated with the header `Authorization: token {apiKey}:{apiSecret}`. Use **Test** to validate the connection — it calls `/api/method/frappe.auth.get_logged_user` and fails if the site answers as `Guest`, which is what Frappe returns when the keys are not recognised.
 
+The trailing `/helpdesk` is dropped for a concrete reason: `/api/…` only exists at the site root, and under an SPA mount the request is caught by the front-end router, which answers **200 with `index.html`** rather than an error. Before this stripping was applied to the connection test as well, a Site URL ending in `/helpdesk` made **Test** succeed even with completely wrong keys. An unrecognised path such as `/support` is harmless by comparison — it returns a plain 404.
+
 ### One credential for every Frappe node
 
 `frappeApi` is deliberately **not** Helpdesk-specific. Frappe authenticates a *user on a site*, not an application: the same API key works for Frappe Helpdesk, Frappe CRM, Frappe HR and Frappe LMS, which all live on the same site and share the same `/api` endpoint.
@@ -107,7 +109,7 @@ POST /api/resource/HD Ticket/{name}
 { "run_method": "assign_agent", "agent": "agent@example.com" }
 ```
 
-`run_method` travels in the **body**, alongside the method's own arguments — not in the query string. Frappe rebuilds `form_dict` from the JSON body whenever there is one, and the query-string parameters are dropped in the process: `?run_method=…` together with a body answers `KeyError: 'run_method'` (verified on Frappe 15.116).
+`run_method` travels in the **body**, alongside the method's own arguments — not in the query string. Frappe rebuilds `form_dict` from the JSON body whenever there is one, and the query-string parameters are dropped in the process: `?run_method=…` together with a body answers `KeyError: 'run_method'` (verified on Frappe 15.116 and again on 16.29.0).
 
 That method wraps `frappe.desk.form.assign_to.add` *and* raises the in-app **HD Notification** the Helpdesk UI shows the agent — which a bare `assign_to.add` would skip.
 
@@ -391,7 +393,9 @@ The node outputs `{ "success": true, "doctype": "HD Ticket", "name": "214" }`. F
 
 ## Compatibility
 
-Tested against n8n 1.x and Frappe Framework v15 with Frappe Helpdesk. The node uses the standard `/api/resource` REST endpoints plus the `run_method` route Frappe mounts on the same path, so it should work with any Helpdesk version that keeps the doctype names listed above.
+Tested against n8n 1.x and Frappe Framework **v15 and v16** (16.29.0) with Frappe Helpdesk 1.28.1. The node uses the standard `/api/resource` REST endpoints plus the `run_method` route Frappe mounts on the same path, so it should work with any Helpdesk version that keeps the doctype names listed above.
+
+Frappe 16 adds a second REST API under `/api/v2` (`/api/v2/document/…`, `/api/v2/method/…`), with its own envelope and its own pagination parameters. The node deliberately stays on v1: it is still fully supported on 16, and every behaviour this node relies on — the `{ "data": … }` envelope, `limit_start`/`limit_page_length`, the `run_method` route, `_assign` being readable only through a list query — was re-verified on 16.29.0 and is unchanged.
 
 One version-sensitive point: **`HD Ticket.status` must be a Link to `HD Ticket Status`**. That is the case on both `main` and `develop`. On a Helpdesk old enough to still declare `status` as a `Select`, the Status dropdown falls back to the four default labels and everything else keeps working.
 
