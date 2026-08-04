@@ -54,7 +54,7 @@ function parseJsonParameter(
 	} catch {
 		throw new NodeOperationError(
 			context.getNode(),
-			`The "${parameterName}" parameter is not valid JSON: ${value}`,
+			`Parameter "${parameterName}" is not valid JSON: ${value}`,
 			{
 				itemIndex,
 				description:
@@ -184,10 +184,13 @@ export class FrappeHelpdesk implements INodeType {
 		name: 'frappeHelpdesk',
 		// Frappe Helpdesk logo: opaque violet #7d3dff badge with the glyph knocked out in white.
 		// A single file, hence the same violet on both themes, by choice: the badge carries its
-		// own background and holds contrast on light as well as dark. This leaves the
-		// `icon-prefer-themed-variants` warning (non-blocking, lint exits 0); the
-		// { light, dark } form requires two distinct file paths, hence a different tint on one
-		// of the themes.
+		// own background and holds contrast on light as well as dark.
+		//
+		// `icon-prefer-themed-variants` is silenced rather than worked around: the rule only
+		// checks that `icon` is not a string literal, it never compares the two files, so the
+		// { light, dark } form with the same path twice would satisfy it without changing a
+		// single pixel on screen.
+		// eslint-disable-next-line @n8n/community-nodes/icon-prefer-themed-variants
 		icon: 'file:../../icons/frappe-helpdesk.svg',
 		group: ['transform'],
 		version: 1,
@@ -466,7 +469,7 @@ export class FrappeHelpdesk implements INodeType {
 				} else {
 					throw new NodeOperationError(
 						this.getNode(),
-						`The "${operation}" operation is not supported`,
+						`The operation "${operation}" is not supported`,
 						{ itemIndex: i },
 					);
 				}
