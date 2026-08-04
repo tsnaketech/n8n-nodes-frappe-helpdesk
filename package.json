@@ -1,7 +1,7 @@
 {
 	"name": "n8n-nodes-frappe-helpdesk",
 	"version": "0.1.0",
-	"description": "Nœud n8n pour Frappe Helpdesk : tickets, clients, équipes, priorités et types de tickets",
+	"description": "n8n node for Frappe Helpdesk: tickets, customers, teams, ticket priorities and ticket types",
 	"license": "MIT",
 	"homepage": "https://github.com/tsnaketech/n8n-nodes-frappe-helpdesk#readme",
 	"keywords": [
@@ -14,7 +14,7 @@
 	],
 	"author": {
 		"name": "tsnaketech",
-		"email": "poubello@outlook.com",
+		"email": "snaketech@proton.me",
 		"url": "https://github.com/tsnaketech"
 	},
 	"repository": {
@@ -47,10 +47,10 @@
 		]
 	},
 	"devDependencies": {
-		"@n8n/node-cli": "*",
-		"eslint": "9.39.4",
+		"@n8n/node-cli": "0.42.0",
+		"eslint": "9.39.5",
 		"prettier": "3.9.6",
-		"release-it": "20.2.0",
+		"release-it": "21.0.1",
 		"typescript": "5.9.3"
 	},
 	"peerDependencies": {
