@@ -1,9 +1,10 @@
 # Architecture du credential partagé `frappeApi`
 
-Ce package fait partie d'une suite de nœuds n8n pour les applications Frappe
-(CRM, Helpdesk, HRMS, LMS…). Tous s'authentifient **de la même façon**, contre le même
-site. Le credential `frappeApi` est donc défini une seule fois et partagé, plutôt que
-dupliqué par produit.
+Ce package fait partie d'une suite de nœuds n8n pour Frappe : six nœuds applicatifs
+(CRM, Helpdesk, HRMS, Insights, Learning, Lending) et un nœud **générique** qui pilote
+n'importe quel doctype. Tous s'authentifient **de la même façon**, contre le même site. Le
+credential `frappeApi` est donc défini une seule fois et partagé, plutôt que dupliqué par
+produit.
 
 ## Pourquoi un seul credential
 
@@ -16,18 +17,21 @@ Créer un `frappeCrmApi`, un `frappeHelpdeskApi` et un `frappeHrmsApi` reviendra
 demander trois fois la même chose à l'utilisateur, avec trois fois le risque de la saisir
 différemment. Un seul credential veut dire :
 
-- une seule saisie d'URL, de clé et de secret, même si l'utilisateur installe les trois nœuds ;
+- une seule saisie d'URL, de clé et de secret, même si l'utilisateur installe les sept nœuds ;
 - une rotation de clé à faire à un seul endroit ;
 - un test de connexion qui vaut pour tous les nœuds.
 
 ## Nœuds consommateurs
 
-| Nœud                | Package npm                 | Doctypes visés                                                                                                            | État                    |
-| ------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| **Frappe Helpdesk** | `n8n-nodes-frappe-helpdesk` | `HD Ticket`, `HD Customer`, `HD Team`, `HD Ticket Priority`, `HD Ticket Type` (+ `HD Ticket Status` et `HD Agent` en lecture) | livré (ce dépôt)        |
-| **Frappe CRM**      | `n8n-nodes-frappe-crm`      | `CRM Lead`, `CRM Deal`, `Contact`, `CRM Organization`, `CRM Task`, `FCRM Note`                                              | livré                   |
-| **Frappe HRMS**     | `n8n-nodes-frappe-hrms`     | `Employee`, `Leave Application`, `Attendance`, `Expense Claim`, `Salary Slip`, `Job Opening`, `Job Applicant`, `Job Offer`   | livré                   |
-| **Frappe Learning** | `n8n-nodes-frappe-learning` | `LMS Course`, `Course Chapter`, `Course Lesson`, `LMS Batch`, `LMS Enrollment`, `LMS Batch Enrollment`, `LMS Quiz`, `LMS Assignment`, `LMS Assignment Submission`, `LMS Certificate` (+ `LMS Quiz Submission` et `LMS Course Progress` en lecture) | livré                   |
+| Nœud | Package npm | Doctypes visés | État |
+| --- | --- | --- | --- |
+| **Frappe** (générique) | `n8n-nodes-frappe` | tout doctype du site, choisi à l'exécution par recherche serveur (`resourceLocator`) — plus l'appel de méthodes whitelistées | livré |
+| **Frappe CRM** | `n8n-nodes-frappe-crm` | `CRM Lead`, `CRM Deal`, `Contact`, `CRM Organization`, `CRM Task`, `FCRM Note` | livré |
+| **Frappe Helpdesk** | `n8n-nodes-frappe-helpdesk` | `HD Ticket`, `HD Customer`, `HD Team`, `HD Ticket Priority`, `HD Ticket Type` (+ `HD Ticket Status` et `HD Agent` en lecture) | livré (ce dépôt) |
+| **Frappe HRMS** | `n8n-nodes-frappe-hrms` | `Employee`, `Leave Application`, `Attendance`, `Expense Claim`, `Salary Slip`, `Job Opening`, `Job Applicant`, `Job Offer` | livré |
+| **Frappe Insights** | `n8n-nodes-frappe-insights` | `Insights Workbook`, `Insights Query v3`, `Insights Chart v3`, `Insights Dashboard v3`, `Insights Data Source v3`, `Insights Table v3`, `Insights Alert`, `Insights Team` | livré |
+| **Frappe Learning** | `n8n-nodes-frappe-learning` | `LMS Course`, `Course Chapter`, `Course Lesson`, `LMS Batch`, `LMS Enrollment`, `LMS Batch Enrollment`, `LMS Quiz`, `LMS Assignment`, `LMS Assignment Submission`, `LMS Certificate` (+ `LMS Quiz Submission` et `LMS Course Progress` en lecture) | livré |
+| **Frappe Lending** | `n8n-nodes-frappe-lending` | `Loan Product`, `Loan Application`, `Loan`, `Loan Disbursement`, `Loan Repayment`, `Loan Write Off`, `Loan Security` (+ `Loan Repayment Schedule`, `Loan Interest Accrual` et `Loan Demand` en lecture) | livré |
 
 Le nœud Helpdesk **ne définit aucune variante** du credential : sa description déclare
 `credentials: [{ name: 'frappeApi', required: true }]`, exactement comme les nœuds CRM et
@@ -141,6 +145,36 @@ Si un deuxième nœud arrive dans **ce** package, il sera temps de déplacer ce 
 un `nodes/shared/` commun. Tant qu'il n'y en a qu'un, l'import direct évite une
 indirection prématurée — mais **le fichier ne doit rien apprendre du Helpdesk** : toute
 logique propre à un doctype a sa place dans `FrappeHelpdesk.node.ts`, pas ici.
+
+Un import ne franchit en revanche **pas** la frontière d'un package npm : les six autres
+packages ont leur propre copie du fichier. État à ce jour, à garder en tête avant de
+reporter un correctif d'un package à l'autre :
+
+| Package | Contenu de `GenericFunctions.ts` |
+| --- | --- |
+| Générique | base commune + `frappeMethodRequest` + `frappeRunDocMethod` (route `/api/resource/…`) + `frappeMethodCall` |
+| CRM | base commune, sans `frappeMethodRequest` |
+| Helpdesk | base commune + `frappeMethodRequest` + `frappeRunDocMethod` (route `/api/resource/…`) |
+| HRMS | base commune + `frappeMethodRequest` (enveloppe `{ "message": … }` de `/api/method/`) |
+| Insights | base commune + `frappeMethodRequest` + `frappeRunDocMethod` (route `/api/method/frappe.handler.run_doc_method`) |
+| Learning | base commune + `frappeMethodRequest` |
+| Lending | base commune + `frappeMethodRequest` |
+
+La base commune — `normalizeSiteUrl`, `parseFrappeError`, `serializeQuery`,
+`frappeApiRequest`, `frappeApiRequestAllItems` — est **identique dans les sept packages**,
+vérifiée par empreinte le 04/08/2026. Un correctif qui la touche concerne donc les sept ; un
+ajout de helper ne concerne que le nœud qui en a besoin.
+
+Attention : les deux `frappeRunDocMethod` **ne sont pas interchangeables**. Celui du
+Helpdesk — dont le nœud générique reprend la copie — poste sur
+`/api/resource/{doctype}/{name}` avec `run_method` dans le corps, ce qui exige la permission
+`write` sur le document ; celui d'Insights poste sur
+`/api/method/frappe.handler.run_doc_method`, qui ne demande que `read` et préserve le typage
+JSON des arguments. Les deux routes existent bel et bien : `run_doc_method` n'a pas de
+décorateur `@frappe.whitelist()`, mais `frappe/handler.py` l'exempte nommément
+(`if method != run_doc_method:`), sur les branches `version-15`, `version-16` et `develop`.
+Le nommer par son **chemin complet** : le nom court passe par un raccourci que
+`frappe/handler.py` déprécie à chaque appel et supprime en v17.
 
 ### 3. Déclarer le nœud dans `package.json`
 

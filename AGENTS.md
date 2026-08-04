@@ -8,12 +8,12 @@ Package de nœuds communautaires n8n, écrit en TypeScript, publié sous le nom
 `n8n-nodes-frappe-helpdesk` (dépôt : github.com/tsnaketech/n8n-nodes-frappe-helpdesk).
 
 Objectif : une **suite** de nœuds pour les applications Frappe. Ce dépôt ne contient que le
-nœud Frappe Helpdesk. Les nœuds Frappe CRM et Frappe HRMS existent déjà, mais **dans des
-packages npm frères** (`n8n-nodes-frappe-crm`, `n8n-nodes-frappe-hrms`), pas ici. Le nœud
-Frappe LMS reste à créer. Le template de départ (`ExampleNode` / `ExampleApi`) a été
-supprimé.
+nœud Frappe Helpdesk. La famille en compte sept : le nœud générique `n8n-nodes-frappe` et
+les six nœuds applicatifs `n8n-nodes-frappe-crm`, `-helpdesk`, `-hrms`, `-insights`,
+`-learning` et `-lending` — chacun **dans son propre package npm**, pas ici. Le template de
+départ (`ExampleNode` / `ExampleApi`) a été supprimé.
 
-Le point structurant : les quatre applications tournent sur le même site Frappe et
+Le point structurant : toutes ces applications tournent sur le même site Frappe et
 partagent la même authentification. Le credential `frappeApi` est donc **unique et
 générique** — il ne connaît que la racine du site, jamais un doctype ni un produit. Ne pas
 créer de credential par application. Voir `docs/CREDENTIALS.md`, qui fait référence sur ce
@@ -21,12 +21,15 @@ point.
 
 Conséquence d'empaquetage à ne pas confondre avec une duplication : n8n charge les
 credentials **par package npm**, donc chaque package embarque sa propre copie de
-`credentials/FrappeApi.credentials.ts`. Les trois copies exposent le même
+`credentials/FrappeApi.credentials.ts`. Les sept copies exposent le même
 `name = 'frappeApi'` et les mêmes noms de champs, si bien que l'utilisateur ne voit qu'un
 seul type « Frappe API ». **Toute modification de ce fichier doit être répercutée à
-l'identique dans `n8n-nodes-frappe-crm` et `n8n-nodes-frappe-hrms`.**
+l'identique dans les six autres packages** (`n8n-nodes-frappe`, `-crm`, `-hrms`,
+`-insights`, `-learning`, `-lending`).
 
-Le dépôt n'est pas initialisé sous git (`git init` reste à faire si besoin).
+Le dépôt est sous git, `origin` pointant sur
+`github.com/tsnaketech/n8n-nodes-frappe-helpdesk`. La CI et la publication npm se déclenchent
+depuis GitHub — voir `.github/workflows/`.
 
 ## Structure
 
@@ -150,11 +153,13 @@ dans le dépôt et aucun runner de test configuré ; ne pas inventer `npm test`.
 changement mérite d'être vérifié, le faire via `npm run build` puis un chargement réel
 dans n8n (voir README, section « Testing locally in n8n »).
 
-`npm run lint` sort en 0 avec **un warning attendu** : `icon-prefer-themed-variants`, parce
-que l'icône du nœud est un fichier unique. C'est un choix — le badge violet `#7d3dff` porte
-son propre fond et tient le contraste sur les deux thèmes ; la forme `{ light, dark }`
-exigerait deux fichiers distincts, donc une teinte différente sur l'un des thèmes. Ne pas
-« corriger » ce warning sans en discuter. Le package HRMS fait le même choix.
+`npm run lint` sort en succès **sans warning**. Le seul qui apparaissait,
+`icon-prefer-themed-variants`, est désactivé ligne à ligne dans le nœud, avec sa
+justification en commentaire : l'icône est un fichier unique, et c'est délibéré — le badge
+Frappe Helpdesk porte son propre fond violet (`#7d3dff`) et tient le contraste sur les deux
+thèmes. La règle vérifie seulement qu'`icon` n'est pas une chaîne littérale, sans jamais
+comparer les deux fichiers : la forme `{ light, dark }` pointant deux fois le même chemin la
+satisferait sans rien changer à l'écran. Ne pas réactiver la règle sans en discuter.
 
 ## Conventions de code
 

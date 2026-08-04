@@ -10,9 +10,9 @@ content here, or the two will drift apart.
 
 Quick orientation, in `AGENTS.md`:
 
-- **Project state** — the package ships the Frappe Helpdesk node. Frappe CRM and Frappe
-  HRMS live in *sibling npm packages*, not here, and each carries its own copy of the
-  shared `frappeApi` credential.
+- **Project state** — the package ships the Frappe Helpdesk node. It belongs to a
+  seven-package family — the generic `n8n-nodes-frappe` plus one package per app — and each
+  member carries its own copy of the shared `frappeApi` credential and transport layer.
 - **Doctypes and traps** — the verified `HD *` names, and the four things not to guess:
   ticket status is a Link (not a Select), Assign goes through a controller method,
   Change Status does not, and priorities/types are named by their label.
