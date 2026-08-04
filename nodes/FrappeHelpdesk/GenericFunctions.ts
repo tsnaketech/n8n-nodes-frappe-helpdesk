@@ -11,9 +11,16 @@ import { NodeApiError } from 'n8n-workflow';
 /**
  * Transport layer shared by every Frappe node.
  *
- * Nothing here is Helpdesk-specific: it is the same file as in the Frappe CRM and Frappe
- * HRMS packages, kept identical apart from the `frappeRunDocMethod` helper added below.
- * These functions only know about the `frappeApi` credential and Frappe's generic REST API.
+ * The shared part — `normalizeSiteUrl`, `parseFrappeError`, `serializeQuery`,
+ * `frappeApiRequest` and `frappeApiRequestAllItems` — is identical in the seven packages of
+ * the family, each carrying its own copy: an import never crosses an npm package boundary.
+ * A fix there concerns all seven. See docs/CREDENTIALS.md, which tables what each copy adds
+ * on top of it.
+ *
+ * Two helpers are appended below, so the shared part stays a verbatim copy:
+ * `frappeMethodRequest` and `frappeRunDocMethod`, which posts to
+ * `/api/resource/{doctype}/{name}`. Read its own comment before reusing it elsewhere — the
+ * Insights package runs document methods through another route, on purpose.
  */
 
 const CREDENTIALS_NAME = 'frappeApi';
@@ -28,24 +35,49 @@ const MAX_AUTO_PAGES = 1000;
  * Frappe application paths mounted as SPAs. They are not part of the API — `/api/...`
  * always lives at the site root. Stripping them lets a user paste the URL their browser
  * displays (e.g. https://site/helpdesk) instead of the bare site root.
+ *
+ * `desk` is the Frappe v16 mount for the Desk, which lived at `app` up to v15. Both are
+ * listed so the same credential works against either major version. Since v16 the Desk URL
+ * also carries the workspace — `/desk/hrms` for Frappe HR — hence the truncation below.
  */
-const SPA_MOUNT_PATHS = ['crm', 'helpdesk', 'lms', 'hr', 'insights', 'builder', 'app'];
+const SPA_MOUNT_PATHS = [
+	'desk',
+	'app',
+	'crm',
+	'helpdesk',
+	'hrms',
+	'hr',
+	'roster',
+	'lms',
+	'insights',
+	'builder',
+];
+
+/** Matches the first mount segment of a path, capturing everything before it. */
+const SPA_MOUNT_PATTERN = new RegExp(`^(.*?)/(?:${SPA_MOUNT_PATHS.join('|')})(?:/|$)`, 'i');
 
 /**
- * Normalizes the site URL entered in the credential: drops the trailing slash and, when
- * present, the SPA path.
+ * Normalizes the site URL entered in the credential: drops the trailing slash and, from the
+ * first SPA mount onwards, the application path.
+ *
+ * Truncating instead of stripping a single trailing segment is what makes v16 URLs work:
+ * the browser shows `https://site/desk/hrms`, and a document sits even deeper at
+ * `https://site/desk/employee/HR-EMP-00001`. Only the path is inspected, never the host, so
+ * a site served from `https://app.example.com` keeps its hostname.
  */
 export function normalizeSiteUrl(siteUrl: string): string {
-	let normalized = (siteUrl ?? '').trim().replace(/\/+$/, '');
+	const trimmed = (siteUrl ?? '').trim().replace(/\/+$/, '');
 
-	for (const mount of SPA_MOUNT_PATHS) {
-		if (normalized.toLowerCase().endsWith(`/${mount}`)) {
-			normalized = normalized.slice(0, -(mount.length + 1));
-			break;
-		}
-	}
+	const schemeEnd = trimmed.indexOf('://');
+	const pathStart = trimmed.indexOf('/', schemeEnd === -1 ? 0 : schemeEnd + 3);
+	if (pathStart === -1) return trimmed;
 
-	return normalized.replace(/\/+$/, '');
+	const root = trimmed.slice(0, pathStart);
+	const path = trimmed.slice(pathStart);
+	const match = SPA_MOUNT_PATTERN.exec(path);
+
+	// No mount matched: the path is kept, since the site may genuinely live under one.
+	return `${root}${match ? match[1] : path}`.replace(/\/+$/, '');
 }
 
 /** Strips HTML tags and decodes the most common entities. */
@@ -280,8 +312,10 @@ export async function frappeMethodRequest<T = IDataObject>(
  * Consequence for callers: `args` must carry the method's parameters and nothing else. Any
  * stray key becomes an unexpected keyword argument, and Frappe answers 417.
  *
- * `POST /api/method/run_doc_method` with `{ dt, dn, method, args }` is a genuine
- * alternative, contrary to what this comment claimed until now. It carries no
+ * `POST /api/method/frappe.handler.run_doc_method` with `{ dt, dn, method, args }` is a
+ * genuine alternative, contrary to what this comment claimed until now. Name it by its full
+ * dotted path: the bare `run_doc_method` resolves too, but through a shorthand that
+ * `frappe/handler.py` warns about on every call and drops in v17. It carries no
  * `@frappe.whitelist()` decorator, which makes it look unreachable, but `frappe/handler.py`
  * exempts it by name:
  *
