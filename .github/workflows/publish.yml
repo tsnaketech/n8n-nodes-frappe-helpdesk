@@ -73,11 +73,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Build
-        run: npm run build
+      - name: Run CI checks
+        run: npm run ci
 
       - name: Publish
         run: npm publish
