@@ -1,6 +1,12 @@
 import type { INodeProperties } from 'n8n-workflow';
 
-import { documentIdField, getManyFields, omitFields, ticketOperations } from './CommonDescription';
+import {
+	documentIdField,
+	getManyFields,
+	omitFields,
+	promoteFields,
+	ticketOperations,
+} from './CommonDescription';
 
 /**
  * `HD Ticket` fields offered on create as well as update.
@@ -20,17 +26,53 @@ const ticketFields: INodeProperties[] = [
 	{
 		displayName: 'Contact',
 		name: 'contact',
-		type: 'string',
-		default: '',
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
 		description: 'Link to a record of the core Frappe Contact doctype',
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				typeOptions: {
+					searchListMethod: 'searchContact',
+					searchable: true,
+					searchFilterRequired: false,
+				},
+			},
+			{
+				displayName: 'By Name',
+				name: 'name',
+				type: 'string',
+				placeholder: 'Marie Dupont',
+			},
+		],
 	},
 	{
 		displayName: 'Customer',
 		name: 'customer',
-		type: 'string',
-		default: '',
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
 		description:
 			'The "name" of the HD Customer record. Frappe derives it from the contact when left empty.',
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				typeOptions: {
+					searchListMethod: 'searchHdCustomer',
+					searchable: true,
+					searchFilterRequired: false,
+				},
+			},
+			{
+				displayName: 'By Name',
+				name: 'name',
+				type: 'string',
+				placeholder: 'Acme SAS',
+			},
+		],
 	},
 	{
 		displayName: 'Description',
@@ -58,12 +100,13 @@ const ticketFields: INodeProperties[] = [
 		description: 'Requester email. Frappe uses it to attach the ticket to an existing contact.',
 	},
 	{
-		displayName: 'SLA',
+		displayName: 'SLA Name or ID',
 		name: 'sla',
-		type: 'string',
+		type: 'options',
+		typeOptions: { loadOptionsMethod: 'getServiceLevelAgreements' },
 		default: '',
 		description:
-			'The "name" of an HD Service Level Agreement. Leaving it empty lets Frappe apply the default SLA.',
+			'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 	},
 	{
 		displayName: 'Status Name or ID',
@@ -101,7 +144,36 @@ const ticketFields: INodeProperties[] = [
 	},
 ];
 
-const REQUIRED_ON_CREATE = ['subject'];
+/**
+ * Fields exposed at the top level on create, outside the collection.
+ *
+ * The node imports this list to know which parameters to read there, so the fields
+ * drawn here and the fields sent cannot drift apart.
+ */
+export const TICKET_REQUIRED_ON_CREATE = ['subject'];
+
+/**
+ * Fields lifted out of "Additional Fields" on create: who raised the ticket, what it says,
+ * and how it is qualified and routed — the ones an integration sets on nearly every ticket.
+ * Ranked by how often they are filled, since that is the order they appear in.
+ *
+ * `status` deliberately stays in the collection: a new ticket is `Open`, and forcing another
+ * status at creation is the minority case.
+ *
+ * **Create only.** On update the collection is the right tool: it sends only what the user
+ * explicitly added, which is the partial-update semantics a PUT needs — and adding the field
+ * there *is* the way to say "clear this one".
+ *
+ * The node imports this list to know which top-level parameters to read, so the two never
+ * drift apart.
+ */
+export const TICKET_PROMOTED_ON_CREATE = [
+	'raised_by',
+	'description',
+	'priority',
+	'ticket_type',
+	'agent_group',
+];
 
 export const ticketDescription: INodeProperties[] = [
 	ticketOperations('ticket', 'ticket'),
@@ -114,10 +186,12 @@ export const ticketDescription: INodeProperties[] = [
 		displayOptions: { show: { resource: ['ticket'], operation: ['create'] } },
 		description: 'Ticket subject. The only field the doctype declares as required.',
 	},
+	...promoteFields(ticketFields, TICKET_PROMOTED_ON_CREATE, 'ticket', ['create']),
 	documentIdField(
 		'ticket',
 		'The ticket\'s "name". On HD Ticket it is an auto-incremented integer, e.g. 214.',
 		['get', 'update', 'delete', 'assign', 'changeStatus'],
+		'214',
 	),
 	{
 		displayName: 'Agent Name or ID',
@@ -166,7 +240,7 @@ export const ticketDescription: INodeProperties[] = [
 		placeholder: 'Add field',
 		default: {},
 		displayOptions: { show: { resource: ['ticket'], operation: ['create'] } },
-		options: omitFields(ticketFields, REQUIRED_ON_CREATE),
+		options: omitFields(ticketFields, [...TICKET_REQUIRED_ON_CREATE, ...TICKET_PROMOTED_ON_CREATE]),
 	},
 	{
 		displayName: 'Update Fields',

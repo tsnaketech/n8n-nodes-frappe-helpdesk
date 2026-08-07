@@ -21,6 +21,54 @@ export function omitFields(fields: INodeProperties[], names: string[]): INodePro
 }
 
 /**
+ * Re-exposes shared fields at the top level, for one operation.
+ *
+ * Used to lift the fields a user sets on almost every create out of "Additional Fields",
+ * where they are invisible until the collection is opened. The field keeps its type,
+ * description and dynamic list — it is the same object with a `displayOptions` added, not a
+ * second copy that would drift.
+ *
+ * **A promoted field changes the execute contract.** Inside a collection a field exists only
+ * once the user adds it; at the top level it always yields a value, so an untouched one
+ * arrives as `''`. Whoever calls this must drop the empty ones before building the request
+ * body, or Frappe writes a blank over a Link field. See `PROMOTED_ON_CREATE` in the node.
+ *
+ * Order follows `names`, not the shared array: these are ranked by how often they are used,
+ * which is the whole point of promoting them.
+ */
+export function promoteFields(
+	fields: INodeProperties[],
+	names: string[],
+	resource: string,
+	operations: string[],
+): INodeProperties[] {
+	return names.map((name) => {
+		const field = fields.find((candidate) => candidate.name === name);
+		if (field === undefined) {
+			// Loud on purpose: a typo here would silently drop the field from the UI, and the
+			// node would keep working while quietly ignoring what the user typed.
+			throw new Error(`Cannot promote unknown field "${name}" of resource "${resource}"`);
+		}
+
+		return {
+			...field,
+			displayOptions: { show: { resource: [resource], operation: operations } },
+		};
+	});
+}
+
+/**
+ * Indefinite article for a resource label.
+ *
+ * Helpdesk, where this wording comes from, never needed it — ticket, team and customer all
+ * start with a consonant. The other packages do: "a employee", "a alert" or "a assignment"
+ * would be wrong, so the article is derived rather than written into the template.
+ */
+function articleFor(singular: string): string {
+	return /^[aeiou]/i.test(singular) ? 'an' : 'a';
+}
+
+/**
  * The five CRUD operations, specialised for a given resource.
  *
  * `plural` is a parameter rather than `${singular}s` because that naive rule produces
@@ -31,6 +79,8 @@ export function operationsFor(
 	singular: string,
 	plural = `${singular}s`,
 ): INodeProperties {
+	const article = articleFor(singular);
+
 	return {
 		displayName: 'Operation',
 		name: 'operation',
@@ -41,20 +91,20 @@ export function operationsFor(
 			{
 				name: 'Create',
 				value: 'create',
-				description: `Create a ${singular}`,
-				action: `Create a ${singular}`,
+				description: `Create ${article} ${singular}`,
+				action: `Create ${article} ${singular}`,
 			},
 			{
 				name: 'Delete',
 				value: 'delete',
-				description: `Delete a ${singular}`,
-				action: `Delete a ${singular}`,
+				description: `Delete ${article} ${singular}`,
+				action: `Delete ${article} ${singular}`,
 			},
 			{
 				name: 'Get',
 				value: 'get',
-				description: `Get a ${singular}`,
-				action: `Get a ${singular}`,
+				description: `Get ${article} ${singular}`,
+				action: `Get ${article} ${singular}`,
 			},
 			{
 				name: 'Get Many',
@@ -65,8 +115,8 @@ export function operationsFor(
 			{
 				name: 'Update',
 				value: 'update',
-				description: `Update a ${singular}`,
-				action: `Update a ${singular}`,
+				description: `Update ${article} ${singular}`,
+				action: `Update ${article} ${singular}`,
 			},
 		],
 		default: 'getAll',
@@ -86,6 +136,8 @@ export function ticketOperations(
 	singular: string,
 	plural = `${singular}s`,
 ): INodeProperties {
+	const article = articleFor(singular);
+
 	return {
 		displayName: 'Operation',
 		name: 'operation',
@@ -96,32 +148,32 @@ export function ticketOperations(
 			{
 				name: 'Assign',
 				value: 'assign',
-				description: `Assign a ${singular} to an agent`,
-				action: `Assign a ${singular} to an agent`,
+				description: `Assign ${article} ${singular} to an agent`,
+				action: `Assign ${article} ${singular} to an agent`,
 			},
 			{
 				name: 'Change Status',
 				value: 'changeStatus',
-				description: `Change the status of a ${singular}`,
-				action: `Change the status of a ${singular}`,
+				description: `Change the status of ${article} ${singular}`,
+				action: `Change the status of ${article} ${singular}`,
 			},
 			{
 				name: 'Create',
 				value: 'create',
-				description: `Create a ${singular}`,
-				action: `Create a ${singular}`,
+				description: `Create ${article} ${singular}`,
+				action: `Create ${article} ${singular}`,
 			},
 			{
 				name: 'Delete',
 				value: 'delete',
-				description: `Delete a ${singular}`,
-				action: `Delete a ${singular}`,
+				description: `Delete ${article} ${singular}`,
+				action: `Delete ${article} ${singular}`,
 			},
 			{
 				name: 'Get',
 				value: 'get',
-				description: `Get a ${singular}`,
-				action: `Get a ${singular}`,
+				description: `Get ${article} ${singular}`,
+				action: `Get ${article} ${singular}`,
 			},
 			{
 				name: 'Get Many',
@@ -132,8 +184,8 @@ export function ticketOperations(
 			{
 				name: 'Update',
 				value: 'update',
-				description: `Update a ${singular}`,
-				action: `Update a ${singular}`,
+				description: `Update ${article} ${singular}`,
+				action: `Update ${article} ${singular}`,
 			},
 		],
 		default: 'getAll',
@@ -150,6 +202,8 @@ export function readOperationsFor(
 	singular: string,
 	plural = `${singular}s`,
 ): INodeProperties {
+	const article = articleFor(singular);
+
 	return {
 		displayName: 'Operation',
 		name: 'operation',
@@ -160,8 +214,8 @@ export function readOperationsFor(
 			{
 				name: 'Get',
 				value: 'get',
-				description: `Get a ${singular}`,
-				action: `Get a ${singular}`,
+				description: `Get ${article} ${singular}`,
+				action: `Get ${article} ${singular}`,
 			},
 			{
 				name: 'Get Many',
@@ -175,22 +229,49 @@ export function readOperationsFor(
 }
 
 /**
- * Document identifier (Frappe's `name` field), required by every operation that targets a
- * single record.
+ * Document targeted by every operation that acts on a single record, identified by Frappe's
+ * `name` field.
+ *
+ * A `resourceLocator` rather than a plain string: `name` is rarely something a user knows by
+ * heart — an `HD Ticket` is an integer — so the list mode searches the site through
+ * `searchDocuments`. The `name` mode is kept for expressions and for the case where the
+ * search cannot run, which is why the locator is never a dead end.
+ *
+ * `extractValue: true` is mandatory when reading this parameter in `execute()`: the stored
+ * value is `{ mode, value }`, not the identifier.
  */
 export function documentIdField(
 	resource: string,
 	description: string,
 	operations: string[] = DOCUMENT_OPERATIONS,
+	placeholder?: string,
 ): INodeProperties {
 	return {
-		displayName: 'Document ID',
+		displayName: 'Document',
 		name: 'documentId',
-		type: 'string',
-		default: '',
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
 		required: true,
 		displayOptions: { show: { resource: [resource], operation: operations } },
 		description,
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				typeOptions: {
+					searchListMethod: 'searchDocuments',
+					searchable: true,
+					searchFilterRequired: false,
+				},
+			},
+			{
+				displayName: 'By Name',
+				name: 'name',
+				type: 'string',
+				placeholder,
+			},
+		],
 	};
 }
 

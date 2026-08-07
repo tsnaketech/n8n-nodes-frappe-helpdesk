@@ -64,8 +64,10 @@ et `develop`. À ne pas deviner :
 | Ticket Priority | `HD Ticket Priority` |
 | Ticket Type     | `HD Ticket Type`     |
 
-Deux doctypes sont **lus sans être exposés** comme resources, uniquement pour alimenter les
-listes déroulantes : `HD Ticket Status` et `HD Agent`.
+Cinq doctypes sont **lus sans être exposés** comme resources, uniquement pour alimenter les
+sélecteurs : `HD Ticket Status` et `HD Agent` (listes déroulantes écrites à la main),
+`HD Service Level Agreement` (liste déroulante par fabrique), `Contact` et `Country`
+(recherches).
 
 Huit pièges vérifiés dans la source puis sur une instance réelle (Frappe 15.116 puis 16.29.0 /
 Helpdesk 1.28.1), à ne pas réintroduire :
@@ -164,10 +166,9 @@ satisferait sans rien changer à l'écran. Ne pas réactiver la règle sans en d
 ## Conventions de code
 
 - Prettier (`.prettierrc.js`) : **tabulations**, largeur 100, guillemets simples, points-virgules,
-  virgules finales partout, fins de ligne LF. Attention : les fichiers `.ts` de ce dépôt sont
-  indentés en tabulations, mais le package CRM contient encore des fichiers en espaces (2).
-  Suivre l'indentation du fichier qu'on modifie plutôt que de reformater en masse ; un
-  reformatage global doit être une tâche à part, explicitement demandée.
+  virgules finales partout, fins de ligne LF. Les sept packages sont indentés en tabulations,
+  CRM compris — il a longtemps gardé des fichiers en espaces (2), écart depuis résorbé. Ne pas
+  réintroduire d'espaces.
 - ESLint : config `@n8n/node-cli/eslint`, non personnalisée. Elle impose les règles n8n sur
   le nommage des paramètres, `displayName`, l'ordre des options, etc. — ces erreurs de lint
   sont des vraies contraintes de la plateforme, ne pas les désactiver avec un commentaire
@@ -201,7 +202,7 @@ satisferait sans rien changer à l'écran. Ne pas réactiver la règle sans en d
   `_server_messages`, du JSON encodé **dans** du JSON et truffé de HTML ; remonter le code
   HTTP brut ne renseigne pas l'utilisateur. Les requêtes utilisent donc
   `ignoreHttpStatusErrors` pour inspecter le corps avant de lever une `NodeApiError`.
-- Champs dynamiques : les listes Status, Priority, Ticket Type, Team et Agent sont des
+- Champs dynamiques : les listes Status, Priority, Ticket Type, Team, Agent et SLA sont des
   `loadOptions` interrogeant le site. Les règles ESLint n8n imposent alors un `displayName`
   suffixé « Name or ID » (ou « Names or IDs » en `multiOptions`) et une `description`
   strictement égale au texte « Choose from the list, or specify… ». Ne pas y ajouter de
@@ -224,6 +225,94 @@ inutilisé). `CommonDescription.ts` construit précisément ses `description` et
 interpolation. Après un `lint:fix`, relire le diff des fichiers `descriptions/` plutôt que
 de le supposer sûr — ou corriger la ponctuation à la main, ce que fait ce dépôt.
 
+## Sélecteurs (champs Link)
+
+Aucun champ pointant vers un autre enregistrement Frappe n'est en texte libre. Cinq blocs
+portent ce mécanisme dans `FrappeHelpdesk.node.ts` :
+
+| Bloc | Rôle |
+| --- | --- |
+| `searchIn` | recherche paginée dans un doctype, filtrage côté Frappe |
+| `searchDocuments` | le champ **Document** ; résout le doctype depuis le paramètre `resource` |
+| `linkSearch(doctype, titleField?)` | fabrique une recherche pour un champ Link |
+| `linkOptions(doctype, { filters?, labelField? })` | fabrique une liste déroulante |
+| `unwrapResourceLocators` | déballe les locators d'une collection avant l'envoi |
+
+**Ces blocs sont identiques au caractère près dans les six packages applicatifs**, au même
+titre que le transport (règle n°0) : une correction ici se reporte partout.
+
+`getTicketStatuses` reste écrit à la main : il trie sur la colonne `order` — un mot
+réservé SQL que Frappe ne protège pas dans `order_by` — et retombe sur quatre statuts par
+défaut si le doctype n'existe pas. La fabrique ne sait exprimer ni l'un ni l'autre.
+
+### À ne pas casser
+
+- **`documentId` est un `resourceLocator`.** Le lire sans `{ extractValue: true }` renvoie
+  `{ __rl, mode, value }` et Frappe reçoit `[object Object]` dans l'URL. Même chose pour tout
+  champ Link exposé au premier niveau.
+- **Les locators d'une collection ne sont pas déballés par n8n.**
+  `getNodeParameter('additionalFields', i)` rend les objets bruts : passer par
+  `unwrapResourceLocators` avant de construire le corps. n8n ne déballe que si l'on adresse le
+  paramètre par son chemin exact, ce qui imposerait un appel par champ.
+- **Une méthode `listSearch` ignore quel champ l'a appelée.** D'où une méthode liée par doctype
+  cible, produite par la fabrique — et non une méthode générique.
+
+### Choisir entre recherche et liste déroulante
+
+Le critère est la **nature** du doctype, pas son nombre de lignes actuel : `Address` ou
+`Project` peuvent être vides sur un site de test et sans limite en production.
+
+- **Recherche** pour ce que l'activité alimente : personnes, documents transactionnels, et les
+  listes ISO volumineuses (`Country`, 250 lignes).
+- **Liste déroulante** pour ce qu'un administrateur maintient. `Currency` y entre grâce au
+  filtre `enabled = 1`, qui ramène ~150 lignes à une poignée.
+
+### Champ titre : se lire, jamais se deviner
+
+Lire **`title_field` et `autoname`** dans `/api/resource/DocType/<nom>` avant de renseigner
+`TITLE_FIELD_BY_RESOURCE` ou l'argument `titleField`. Quand l'`autoname` est `field:x` ou
+`format:{####} {title}`, le `name` porte déjà le libellé et en ajouter un le répète
+(« 0002 Introduction — Introduction »).
+
+Les deux fabriques retombent sur `name` seul si Frappe refuse le champ, donc **une erreur ici
+ne casse rien et ne se voit pas** : elle se contrôle sur des données réelles, pas au jugé.
+
+### Détecter un champ Link
+
+Se fier à ce que le doctype **déclare**, pas au libellé des descriptions du nœud. Un comptage
+fondé sur la mention « Link to » avait manqué 16 champs sur le seul package HRMS. Penser aussi
+aux **Custom Fields** : ils n'apparaissent pas dans `DocType.fields` et se lisent séparément
+via le doctype `Custom Field`.
+
+### `REQUIRED_ON_CREATE` a une source unique
+
+La liste des champs exposés au premier niveau à la création est déclarée **dans le fichier de
+description** de la ressource et exportée (`TICKET_REQUIRED_ON_CREATE`, etc.) ; le nœud
+l'importe pour composer son `Record`. Ne pas la réécrire dans le nœud : les deux copies
+existaient et avaient déjà divergé.
+
+### Champs remontés au premier niveau à la création
+
+`promoteFields()` réexpose un champ du tableau partagé hors de « Additional Fields », pour la
+seule opération **create** : c'est le même objet avec un `displayOptions` ajouté, pas une copie
+qui dériverait. La liste vit avec les descriptions (`TICKET_PROMOTED_ON_CREATE`) et le nœud
+l'importe.
+
+**Un champ promu change le contrat d'exécution.** Dans une collection, un champ n'existe que si
+l'utilisateur l'a ajouté ; au premier niveau, le paramètre renvoie toujours une valeur — `''`
+si on n'y touche pas. Écrire ça tel quel poserait un blanc sur un champ Link côté Frappe, d'où
+la boucle qui **écarte les valeurs vides**.
+
+Rien n'est promu sur **update** : la collection y donne exactement la sémantique de mise à jour
+partielle qu'un PUT demande, et y ajouter le champ est la façon explicite de le vider.
+
+### Contrainte ESLint sur les listes dynamiques
+
+Un champ `type: 'options'` alimenté par `loadOptionsMethod` impose un `displayName` suffixé
+« Name or ID » et une `description` strictement égale au texte « Choose from the list, or
+specify an ID using an expression ». Aucune précision métier ne peut y rester : sa place est
+dans le README.
+
 ## Documentation
 
 Quatre READMEs traduits (`README.md`, `.fr.md`, `.es.md`, `.de.md`). Un changement visible par
@@ -231,8 +320,8 @@ l'utilisateur (nouvelle opération, nouveau credential, prérequis) doit être r
 **les quatre**, sinon les traductions divergent silencieusement.
 
 `docs/CREDENTIALS.md` tient le tableau des nœuds consommateurs du credential partagé. Il est
-dupliqué dans les packages CRM et HRMS : quand l'état d'un nœud de la suite change, penser à
-le mettre à jour là-bas aussi.
+dupliqué dans les **sept** packages : quand l'état d'un nœud de la suite change, penser à le
+mettre à jour partout.
 
 ## GitHub Actions
 

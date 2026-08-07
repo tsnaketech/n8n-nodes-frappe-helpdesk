@@ -32,13 +32,22 @@ const AUTO_PAGE_SIZE = 100;
 const MAX_AUTO_PAGES = 1000;
 
 /**
- * Frappe application paths mounted as SPAs. They are not part of the API — `/api/...`
- * always lives at the site root. Stripping them lets a user paste the URL their browser
- * displays (e.g. https://site/helpdesk) instead of the bare site root.
+ * Frappe application paths mounted as single-page apps. They are not part of the API —
+ * `/api/...` always lives at the site root. Stripping them lets a user paste the URL their
+ * browser displays (e.g. https://site/desk/hrms) instead of the bare site root.
+ *
+ * Leaving the path in place does not fail loudly: Frappe serves the SPA's `index.html` with
+ * **HTTP 200** for `/crm/api/method/...`, so the node would parse HTML as a document.
+ *
+ * Mirror of the list in this package's `credentials/FrappeApi.credentials.ts`, which cannot
+ * import this file: a credential is loaded without the node. There the list becomes a regex
+ * alternation — change both together, in all seven packages.
  *
  * `desk` is the Frappe v16 mount for the Desk, which lived at `app` up to v15. Both are
  * listed so the same credential works against either major version. Since v16 the Desk URL
  * also carries the workspace — `/desk/hrms` for Frappe HR — hence the truncation below.
+ * `hrms` comes before `hr` on purpose: the alternation is ordered, and `/hrms` must not be
+ * matched as `/hr` followed by a stray `ms`.
  */
 const SPA_MOUNT_PATHS = [
 	'desk',
@@ -264,7 +273,15 @@ export async function frappeApiRequest<T = IDataObject>(
  * Calls a whitelisted Frappe method under `/api/method/` and unwraps the `{ "message": ... }`
  * envelope those endpoints use — `/api/resource/` answers with `{ "data": ... }` instead.
  *
- * Kept in sync with the CRM and HRMS packages, which use it for `frappe.client.submit`.
+ * Needed for the operations the REST resource API cannot express. In this node that is
+ * `frappe.desk.form.assign_to.remove`, used by the "replace" mode of Assign: `_assign` is a
+ * column Frappe maintains itself, not a docfield, so a PUT on the resource route cannot
+ * clear it.
+ *
+ * The function is byte-identical in the generic, HRMS, Insights, Learning and Lending
+ * packages — a fix here belongs in all five. **CRM is the exception**: it has no copy at
+ * all, because every one of its operations fits the resource route. Do not report a change
+ * there expecting to find this helper.
  */
 export async function frappeMethodRequest<T = IDataObject>(
 	this: IExecuteFunctions,

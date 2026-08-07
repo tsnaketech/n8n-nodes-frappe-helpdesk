@@ -32,7 +32,7 @@ Restart n8n, then search for "Frappe Helpdesk" in the node panel.
 
 ## Credentials
 
-This package uses a single credential type, **Frappe API** (`frappeApi`) — the *same* credential type as the Frappe CRM and Frappe HRMS nodes. If you already have it configured, the Frappe Helpdesk node can select it directly.
+This package uses a single credential type, **Frappe API** (`frappeApi`) — the *same* credential type as the Frappe CRM and Frappe HR nodes. If you already have it configured, the Frappe Helpdesk node can select it directly.
 
 ### Generating API keys in Frappe
 
@@ -152,7 +152,7 @@ Filters accept both Frappe forms — an object for simple equality, or an array 
 
 Same idea on `HD Customer`: `email_id` and `mobile_no` are `read_only` with a `fetch_from` on `primary_contact`. Set the primary contact and let Frappe fill them in. On `HD Team`, `assignment_rule` is read-only — Helpdesk creates the underlying `Assignment Rule` document itself when the team is saved.
 
-Unlike the Frappe HRMS doctypes, **`HD Ticket` is not submittable**: there is no `docstatus` to manage, and Update works on any ticket at any point in its life.
+Unlike the Frappe HR doctypes, **`HD Ticket` is not submittable**: there is no `docstatus` to manage, and Update works on any ticket at any point in its life.
 
 ### Error handling
 
@@ -164,6 +164,23 @@ Frappe reports errors in a `_server_messages` field that contains JSON encoded *
 
 Each example below is a node you can paste into an n8n workflow. Replace the `credentials` block with your own credential.
 
+### Link fields
+
+Fields that point at another Frappe record are pickers, not free text. Two shapes, chosen by what
+the target doctype holds:
+
+- **A searchable list** for anything the day fills up — contacts, customers, countries. Filtering
+  happens on the Frappe side, 50 rows at a time, and the list shows a readable label beside the
+  identifier: `214 — Printer not working`. Every one of them keeps a **By Name** tab for a literal
+  value or an expression.
+- **A dropdown** for the configuration doctypes an administrator maintains — designations, leave
+  types, currencies. n8n labels these `… Name or ID`.
+
+A picker never blocks you: if the list cannot be read, the manual mode still accepts the identifier.
+Note that a searchable field is stored as `{ "__rl": true, "mode": …, "value": … }`, which is why
+the examples below spell it out.
+
+
 ### Ticket — create
 
 ```json
@@ -172,13 +189,17 @@ Each example below is a node you can paste into an n8n workflow. Replace the `cr
 		"resource": "ticket",
 		"operation": "create",
 		"subject": "Invoice PDF fails to download",
+		"raised_by": "claire@acme.io",
+		"description": "<p>Clicking <b>Download</b> on invoice INV-2026-0042 returns a 500.</p>",
+		"priority": "High",
+		"ticket_type": "Bug",
+		"agent_group": "Billing",
 		"additionalFields": {
-			"raised_by": "claire@acme.io",
-			"description": "<p>Clicking <b>Download</b> on invoice INV-2026-0042 returns a 500.</p>",
-			"priority": "High",
-			"ticket_type": "Bug",
-			"agent_group": "Billing",
-			"customer": "Acme SAS",
+			"customer": {
+				"__rl": true,
+				"mode": "name",
+				"value": "Acme SAS"
+			},
 			"status": "Open"
 		}
 	},
@@ -190,7 +211,7 @@ Each example below is a node you can paste into an n8n workflow. Replace the `cr
 }
 ```
 
-`subject` is the only field the doctype declares `reqd`. `description` is a Frappe Text Editor field, so it takes HTML. `priority`, `ticket_type`, `agent_group` (labelled **Team**) and `status` are Links: the value must be the `name` of an existing record — which, for priorities and types, is the label itself.
+`subject` is the only field the doctype declares `reqd`. The five fields beside it — **Requester Email**, **Description**, **Priority**, **Ticket Type** and **Team** — sit at the top level on **create** rather than inside Additional Fields, because they are what a ticket normally carries. On **update** they stay in the collection: an update sends only what you put in it, so leaving a field out is how you leave it alone. `description` is a Frappe Text Editor field, so it takes HTML. `priority`, `ticket_type`, `agent_group` (labelled **Team**) and `status` are Links: the value must be the `name` of an existing record — which, for priorities and types, is the label itself.
 
 Leave `status` out and Helpdesk applies the site's `default_ticket_status`, `Open` on a stock install.
 
@@ -203,7 +224,11 @@ One trap that comes from Helpdesk rather than from the node: setting `agent_grou
 	"parameters": {
 		"resource": "ticket",
 		"operation": "changeStatus",
-		"documentId": "214",
+		"documentId": {
+			"__rl": true,
+			"mode": "name",
+			"value": "214"
+		},
 		"status": "Resolved"
 	},
 	"type": "n8n-nodes-frappe-helpdesk.frappeHelpdesk",
@@ -223,7 +248,11 @@ One trap that comes from Helpdesk rather than from the node: setting `agent_grou
 	"parameters": {
 		"resource": "ticket",
 		"operation": "assign",
-		"documentId": "214",
+		"documentId": {
+			"__rl": true,
+			"mode": "name",
+			"value": "214"
+		},
 		"agent": "marie@acme.io",
 		"assignOptions": {
 			"replace": true
@@ -277,7 +306,11 @@ To select on lifecycle rather than on labels, filter `status_category` instead �
 	"parameters": {
 		"resource": "ticket",
 		"operation": "update",
-		"documentId": "214",
+		"documentId": {
+			"__rl": true,
+			"mode": "name",
+			"value": "214"
+		},
 		"updateFields": {
 			"priority": "Urgent",
 			"agent_group": "Product Experts",
@@ -305,8 +338,16 @@ Raising the priority makes Helpdesk recompute `response_by` and `resolution_by` 
 		"additionalFields": {
 			"domain": "acme.io",
 			"customer_type": "Company",
-			"country": "France",
-			"primary_contact": "Claire Dubois"
+			"country": {
+				"__rl": true,
+				"mode": "name",
+				"value": "France"
+			},
+			"primary_contact": {
+				"__rl": true,
+				"mode": "name",
+				"value": "Claire Dubois"
+			}
 		}
 	},
 	"type": "n8n-nodes-frappe-helpdesk.frappeHelpdesk",
@@ -379,7 +420,11 @@ Any writable resource, given its document ID:
 	"parameters": {
 		"resource": "ticket",
 		"operation": "delete",
-		"documentId": "214"
+		"documentId": {
+			"__rl": true,
+			"mode": "name",
+			"value": "214"
+		}
 	},
 	"type": "n8n-nodes-frappe-helpdesk.frappeHelpdesk",
 	"typeVersion": 1,

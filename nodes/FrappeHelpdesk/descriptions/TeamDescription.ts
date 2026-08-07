@@ -49,7 +49,13 @@ const teamFields: INodeProperties[] = [
 	},
 ];
 
-const REQUIRED_ON_CREATE = ['team_name', 'users'];
+/**
+ * Fields exposed at the top level on create, outside the collection.
+ *
+ * The node imports this list to know which parameters to read there, so the fields
+ * drawn here and the fields sent cannot drift apart.
+ */
+export const TEAM_REQUIRED_ON_CREATE = ['team_name', 'users'];
 
 export const teamDescription: INodeProperties[] = [
 	operationsFor('team', 'team'),
@@ -73,7 +79,12 @@ export const teamDescription: INodeProperties[] = [
 		description:
 			'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 	},
-	documentIdField('team', 'The team\'s "name", which is the team name itself, e.g. Billing.'),
+	documentIdField(
+		'team',
+		'The team\'s "name", which is the team name itself, e.g. Billing.',
+		undefined,
+		'Billing',
+	),
 	{
 		displayName: 'Additional Fields',
 		name: 'additionalFields',
@@ -81,7 +92,7 @@ export const teamDescription: INodeProperties[] = [
 		placeholder: 'Add field',
 		default: {},
 		displayOptions: { show: { resource: ['team'], operation: ['create'] } },
-		options: omitFields(teamFields, REQUIRED_ON_CREATE),
+		options: omitFields(teamFields, TEAM_REQUIRED_ON_CREATE),
 	},
 	{
 		displayName: 'Update Fields',

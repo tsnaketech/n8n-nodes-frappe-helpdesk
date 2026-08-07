@@ -17,9 +17,27 @@ const customerFields: INodeProperties[] = [
 	{
 		displayName: 'Country',
 		name: 'country',
-		type: 'string',
-		default: '',
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
 		description: 'Link to a record of the Country doctype, e.g. France',
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				typeOptions: {
+					searchListMethod: 'searchCountry',
+					searchable: true,
+					searchFilterRequired: false,
+				},
+			},
+			{
+				displayName: 'By Name',
+				name: 'name',
+				type: 'string',
+				placeholder: 'France',
+			},
+		],
 	},
 	{
 		displayName: 'Customer Name',
@@ -60,13 +78,37 @@ const customerFields: INodeProperties[] = [
 	{
 		displayName: 'Primary Contact',
 		name: 'primary_contact',
-		type: 'string',
-		default: '',
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
 		description: 'The "name" of a Contact. Frappe derives the customer email and phone from it.',
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				typeOptions: {
+					searchListMethod: 'searchContact',
+					searchable: true,
+					searchFilterRequired: false,
+				},
+			},
+			{
+				displayName: 'By Name',
+				name: 'name',
+				type: 'string',
+				placeholder: 'Marie Dupont',
+			},
+		],
 	},
 ];
 
-const REQUIRED_ON_CREATE = ['customer_name'];
+/**
+ * Fields exposed at the top level on create, outside the collection.
+ *
+ * The node imports this list to know which parameters to read there, so the fields
+ * drawn here and the fields sent cannot drift apart.
+ */
+export const CUSTOMER_REQUIRED_ON_CREATE = ['customer_name'];
 
 export const customerDescription: INodeProperties[] = [
 	operationsFor('customer', 'customer'),
@@ -80,7 +122,12 @@ export const customerDescription: INodeProperties[] = [
 		description:
 			'Customer name. The doctype names itself after this field, so it is indispensable even though Frappe does not mark it "reqd".',
 	},
-	documentIdField('customer', 'The customer\'s "name", which is its trading name, e.g. Acme SAS.'),
+	documentIdField(
+		'customer',
+		'The customer\'s "name", which is its trading name, e.g. Acme SAS.',
+		undefined,
+		'Acme SAS',
+	),
 	{
 		displayName: 'Additional Fields',
 		name: 'additionalFields',
@@ -88,7 +135,7 @@ export const customerDescription: INodeProperties[] = [
 		placeholder: 'Add field',
 		default: {},
 		displayOptions: { show: { resource: ['customer'], operation: ['create'] } },
-		options: omitFields(customerFields, REQUIRED_ON_CREATE),
+		options: omitFields(customerFields, CUSTOMER_REQUIRED_ON_CREATE),
 	},
 	{
 		displayName: 'Update Fields',

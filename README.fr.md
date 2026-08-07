@@ -32,7 +32,7 @@ Redémarrez n8n, puis cherchez « Frappe Helpdesk » dans le panneau des nœuds.
 
 ## Credentials
 
-Ce package utilise un seul type de credential, **Frappe API** (`frappeApi`) — le *même* que celui des nœuds Frappe CRM et Frappe HRMS. S'il est déjà configuré, le nœud Frappe Helpdesk peut le sélectionner directement.
+Ce package utilise un seul type de credential, **Frappe API** (`frappeApi`) — le *même* que celui des nœuds Frappe CRM et Frappe HR. S'il est déjà configuré, le nœud Frappe Helpdesk peut le sélectionner directement.
 
 ### Générer les clés API dans Frappe
 
@@ -152,7 +152,7 @@ Les filtres acceptent les deux formes Frappe — un objet pour une égalité sim
 
 Même logique sur `HD Customer` : `email_id` et `mobile_no` sont `read_only` avec un `fetch_from` sur `primary_contact`. Renseignez le contact principal et laissez Frappe les remplir. Sur `HD Team`, `assignment_rule` est en lecture seule — le Helpdesk crée lui-même le document `Assignment Rule` sous-jacent à l'enregistrement de l'équipe.
 
-Contrairement aux doctypes de Frappe HRMS, **`HD Ticket` n'est pas soumissible** : pas de `docstatus` à gérer, et Update fonctionne sur n'importe quel ticket à n'importe quel moment de sa vie.
+Contrairement aux doctypes de Frappe HR, **`HD Ticket` n'est pas soumissible** : pas de `docstatus` à gérer, et Update fonctionne sur n'importe quel ticket à n'importe quel moment de sa vie.
 
 ### Gestion des erreurs
 
@@ -164,6 +164,23 @@ Les réponses `401` et `403` portent une indication supplémentaire pointant ver
 
 Chaque exemple ci-dessous est un nœud à coller dans un workflow n8n. Remplacez le bloc `credentials` par le vôtre.
 
+### Champs Link
+
+Les champs qui pointent vers un autre enregistrement Frappe sont des sélecteurs, plus du texte
+libre. Deux formes, choisies selon ce que contient le doctype visé :
+
+- **Une liste cherchable** pour tout ce que l'activité alimente — contacts, clients, pays. Le
+  filtrage se fait côté Frappe, par pages de 50, et la liste affiche un libellé lisible à côté de
+  l'identifiant : `214 — Imprimante en panne`. Chacun garde un onglet **By Name** pour une valeur
+  littérale ou une expression.
+- **Une liste déroulante** pour les doctypes de configuration qu'un administrateur maintient —
+  priorités, types de ticket, équipes. n8n les libelle `… Name or ID`.
+
+Un sélecteur ne bloque jamais : si la liste ne peut pas être lue, le mode manuel accepte toujours
+l'identifiant. À noter, un champ cherchable est stocké sous la forme
+`{ "__rl": true, "mode": …, "value": … }`, d'où son écriture complète dans les exemples.
+
+
 ### Ticket — création
 
 ```json
@@ -172,13 +189,17 @@ Chaque exemple ci-dessous est un nœud à coller dans un workflow n8n. Remplacez
 		"resource": "ticket",
 		"operation": "create",
 		"subject": "Le PDF de facture ne se télécharge pas",
+		"raised_by": "claire@acme.io",
+		"description": "<p>Le bouton <b>Télécharger</b> de la facture INV-2026-0042 renvoie une 500.</p>",
+		"priority": "High",
+		"ticket_type": "Bug",
+		"agent_group": "Billing",
 		"additionalFields": {
-			"raised_by": "claire@acme.io",
-			"description": "<p>Le bouton <b>Télécharger</b> de la facture INV-2026-0042 renvoie une 500.</p>",
-			"priority": "High",
-			"ticket_type": "Bug",
-			"agent_group": "Billing",
-			"customer": "Acme SAS",
+			"customer": {
+				"__rl": true,
+				"mode": "name",
+				"value": "Acme SAS"
+			},
 			"status": "Open"
 		}
 	},
@@ -190,7 +211,7 @@ Chaque exemple ci-dessous est un nœud à coller dans un workflow n8n. Remplacez
 }
 ```
 
-`subject` est le seul champ que le doctype déclare `reqd`. `description` est un champ Text Editor côté Frappe : il accepte du HTML. `priority`, `ticket_type`, `agent_group` (libellé **Team**) et `status` sont des Links : la valeur doit être le `name` d'un enregistrement existant — qui, pour les priorités et les types, est le libellé lui-même.
+`subject` est le seul champ que le doctype déclare `reqd`. Les cinq champs qui l'accompagnent — **Requester Email**, **Description**, **Priority**, **Ticket Type** et **Team** — sont au premier niveau à la **création** plutôt que dans « Additional Fields », parce que c'est ce que porte un ticket ordinaire. Sur **update**, ils restent dans la collection : une mise à jour n'envoie que ce qu'on y met, et ne pas renseigner un champ est justement la façon de ne pas y toucher. `description` est un champ Text Editor côté Frappe : il accepte du HTML. `priority`, `ticket_type`, `agent_group` (libellé **Team**) et `status` sont des Links : la valeur doit être le `name` d'un enregistrement existant — qui, pour les priorités et les types, est le libellé lui-même.
 
 Omettez `status` et le Helpdesk applique le `default_ticket_status` du site, soit `Open` sur une installation standard.
 
@@ -203,7 +224,11 @@ Un piège qui vient du Helpdesk et non du nœud : renseigner `agent_group` décl
 	"parameters": {
 		"resource": "ticket",
 		"operation": "changeStatus",
-		"documentId": "214",
+		"documentId": {
+			"__rl": true,
+			"mode": "name",
+			"value": "214"
+		},
 		"status": "Resolved"
 	},
 	"type": "n8n-nodes-frappe-helpdesk.frappeHelpdesk",
@@ -223,7 +248,11 @@ Un piège qui vient du Helpdesk et non du nœud : renseigner `agent_group` décl
 	"parameters": {
 		"resource": "ticket",
 		"operation": "assign",
-		"documentId": "214",
+		"documentId": {
+			"__rl": true,
+			"mode": "name",
+			"value": "214"
+		},
 		"agent": "marie@acme.io",
 		"assignOptions": {
 			"replace": true
@@ -277,7 +306,11 @@ Pour filtrer sur le cycle de vie plutôt que sur les libellés, utilisez `status
 	"parameters": {
 		"resource": "ticket",
 		"operation": "update",
-		"documentId": "214",
+		"documentId": {
+			"__rl": true,
+			"mode": "name",
+			"value": "214"
+		},
 		"updateFields": {
 			"priority": "Urgent",
 			"agent_group": "Product Experts",
@@ -305,8 +338,16 @@ Relever la priorité amène le Helpdesk à recalculer `response_by` et `resoluti
 		"additionalFields": {
 			"domain": "acme.io",
 			"customer_type": "Company",
-			"country": "France",
-			"primary_contact": "Claire Dubois"
+			"country": {
+				"__rl": true,
+				"mode": "name",
+				"value": "France"
+			},
+			"primary_contact": {
+				"__rl": true,
+				"mode": "name",
+				"value": "Claire Dubois"
+			}
 		}
 	},
 	"type": "n8n-nodes-frappe-helpdesk.frappeHelpdesk",
@@ -379,7 +420,11 @@ N'importe quelle resource modifiable, à partir de son ID de document :
 	"parameters": {
 		"resource": "ticket",
 		"operation": "delete",
-		"documentId": "214"
+		"documentId": {
+			"__rl": true,
+			"mode": "name",
+			"value": "214"
+		}
 	},
 	"type": "n8n-nodes-frappe-helpdesk.frappeHelpdesk",
 	"typeVersion": 1,

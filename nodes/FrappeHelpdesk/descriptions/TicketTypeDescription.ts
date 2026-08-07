@@ -14,8 +14,11 @@ import { documentIdField, getManyFields, readOperationsFor } from './CommonDescr
  */
 export const ticketTypeDescription: INodeProperties[] = [
 	readOperationsFor('ticketType', 'ticket type'),
-	documentIdField('ticketType', 'The ticket type\'s "name", which is its label, e.g. Question.', [
-		'get',
-	]),
+	documentIdField(
+		'ticketType',
+		'The ticket type\'s "name", which is its label, e.g. Question.',
+		['get'],
+		'Question',
+	),
 	...getManyFields('ticketType', 'name,priority,is_system,disabled'),
 ];

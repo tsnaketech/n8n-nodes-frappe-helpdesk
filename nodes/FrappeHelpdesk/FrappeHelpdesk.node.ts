@@ -4,6 +4,7 @@ import type {
 	IHttpRequestMethods,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
+	INodeListSearchResult,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
@@ -11,8 +12,12 @@ import type {
 import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
 import {
+	CUSTOMER_REQUIRED_ON_CREATE,
 	customerDescription,
+	TEAM_REQUIRED_ON_CREATE,
 	teamDescription,
+	TICKET_PROMOTED_ON_CREATE,
+	TICKET_REQUIRED_ON_CREATE,
 	ticketDescription,
 	ticketPriorityDescription,
 	ticketTypeDescription,
@@ -23,18 +28,37 @@ import {
 	frappeMethodRequest,
 	frappeRunDocMethod,
 } from './GenericFunctions';
+import type { FrappeHelpdeskResource } from './types';
 import { AGENT_DOCTYPE, DEFAULT_TICKET_STATUSES, getDoctype, TICKET_STATUS_DOCTYPE } from './types';
 
 /**
- * Fields exposed at the top level, outside the "Additional Fields" collection, because the
- * doctype marks them `reqd` — or, for `customer_name`, because the doctype is named after
- * them and Frappe cannot insert the record without one. Kept here rather than in the
- * descriptions so that the execute loop has a single place to read them from.
+ * Fields each resource exposes at the top level on create, outside the collection.
+ *
+ * Composed from the lists the descriptions declare rather than restated here: the two
+ * used to be written twice and had already drifted apart in order.
  */
 const REQUIRED_ON_CREATE: Record<string, string[]> = {
-	ticket: ['subject'],
-	customer: ['customer_name'],
-	team: ['team_name', 'users'],
+	ticket: TICKET_REQUIRED_ON_CREATE,
+	customer: CUSTOMER_REQUIRED_ON_CREATE,
+	team: TEAM_REQUIRED_ON_CREATE,
+};
+
+/**
+ * Optional fields shown at the top level on create instead of inside "Additional Fields",
+ * so the ones set on nearly every ticket are visible without opening the collection.
+ *
+ * They need their own reading loop because a top-level parameter behaves differently from a
+ * collection entry: a collection only carries what the user added, while a parameter always
+ * yields a value — its default, `''`, when untouched. Writing that straight into the body
+ * would blank a Link field on the Frappe side, so an empty value means "not set" here and is
+ * dropped. Clearing a field stays possible on update, where these fields are still in the
+ * collection: adding one there is the explicit way to say it.
+ *
+ * The list itself lives with the descriptions that build the fields, and is imported rather
+ * than restated, so a field cannot be promoted in one place and forgotten in the other.
+ */
+const PROMOTED_ON_CREATE: Record<string, string[]> = {
+	ticket: TICKET_PROMOTED_ON_CREATE,
 };
 
 /** Parses a JSON parameter entered in the UI, tolerating an expression that already produced an object. */
@@ -145,16 +169,6 @@ async function fetchAssignees(
 	return parseAssignees(Array.isArray(rows) && rows.length > 0 ? rows[0]._assign : undefined);
 }
 
-/** Builds a `{ name, value }` list out of Frappe records, sorted for a stable dropdown. */
-function toOptions(
-	records: IDataObject[],
-	labelFor: (record: IDataObject) => string,
-): INodePropertyOptions[] {
-	return records
-		.map((record) => ({ name: labelFor(record), value: String(record.name) }))
-		.sort((a, b) => a.name.localeCompare(b.name));
-}
-
 /** Fetches the enabled records of a configuration doctype for a dropdown. */
 async function loadRecords(
 	context: ILoadOptionsFunctions,
@@ -178,6 +192,232 @@ async function loadRecords(
 	return Array.isArray(records) ? records : [];
 }
 
+/** Documents fetched per page by the "Document" locator. It asks for more through its token. */
+const SEARCH_PAGE_SIZE = 50;
+
+/**
+ * Field carrying the human-readable label of a resource, when `name` is not already it.
+ *
+ * Only `HD Ticket` needs one: it is autonamed with an incrementing integer, so its list
+ * would otherwise read `212`, `213`, `214` and be useless. The other four resources are
+ * named after their own label — `HD Team` after `team_name`, `HD Customer` after
+ * `customer_name`, priorities and types by prompt — so `name` *is* what the user
+ * recognises. See the comment on `DOCTYPE_BY_RESOURCE` in `types.ts`.
+ */
+const TITLE_FIELD_BY_RESOURCE: Partial<Record<FrappeHelpdeskResource, string>> = {
+	ticket: 'subject',
+};
+
+/** Escapes the LIKE wildcards Frappe forwards to SQL, so a literal `%` searches for `%`. */
+function escapeLike(value: string): string {
+	return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+/**
+ * Lists the documents of one doctype, filtered server-side.
+ *
+ * A plain dropdown is not an option: these doctypes grow without bound, so Frappe does the
+ * filtering and the node only pages through the answer.
+ */
+async function searchIn(
+	this: ILoadOptionsFunctions,
+	doctype: string,
+	titleField: string | undefined,
+	filter?: string,
+	paginationToken?: string,
+): Promise<INodeListSearchResult> {
+	const start = Number(paginationToken ?? 0);
+
+	const query = (title: string | undefined): IDataObject => {
+		const qs: IDataObject = {
+			fields: title === undefined ? ['name'] : ['name', title],
+			order_by: 'modified desc',
+			limit_start: start,
+			limit_page_length: SEARCH_PAGE_SIZE,
+		};
+
+		if (filter) {
+			const pattern = `%${escapeLike(filter)}%`;
+			// On a titled doctype the search has to match either side: nobody looks a record up
+			// by the identifier Frappe gave it.
+			qs.or_filters =
+				title === undefined
+					? [['name', 'like', pattern]]
+					: [
+							['name', 'like', pattern],
+							[title, 'like', pattern],
+						];
+		}
+
+		return qs;
+	};
+
+	const fetch = async (title: string | undefined): Promise<IDataObject[]> =>
+		await frappeApiRequest.call<
+			ILoadOptionsFunctions,
+			[IHttpRequestMethods, string, IDataObject, IDataObject, number],
+			Promise<IDataObject[]>
+		>(this, 'GET', `/api/resource/${encodeURIComponent(doctype)}`, {}, query(title), 0);
+
+	let effectiveTitle = titleField;
+	let documents: IDataObject[];
+	if (effectiveTitle === undefined) {
+		documents = await fetch(undefined);
+	} else {
+		try {
+			documents = await fetch(effectiveTitle);
+		} catch {
+			// The title field is a mapping, not a contract: a customised doctype, or a Frappe
+			// version that renamed it, makes the query fail. Falling back to `name` keeps the
+			// picker usable rather than turning a cosmetic detail into a blocking error. The
+			// retry cannot fail for the same reason, so the error it may raise is the real one.
+			effectiveTitle = undefined;
+			documents = await fetch(undefined);
+		}
+	}
+
+	return {
+		results: documents.map((document) => {
+			const name = String(document.name);
+			const title = effectiveTitle === undefined ? undefined : document[effectiveTitle];
+			return {
+				name: typeof title === 'string' && title !== '' ? `${name} — ${title}` : name,
+				value: name,
+			};
+		}),
+		// A short page is the last one; returning no token stops the locator from asking again.
+		paginationToken:
+			documents.length === SEARCH_PAGE_SIZE ? String(start + SEARCH_PAGE_SIZE) : undefined,
+	};
+}
+
+/**
+ * Lists the documents of the resource currently selected — the "Document" locator.
+ *
+ * The doctype comes from the `resource` parameter rather than from one of its own: that
+ * mapping is what this node knows and the generic Frappe node does not.
+ */
+export async function searchDocuments(
+	this: ILoadOptionsFunctions,
+	filter?: string,
+	paginationToken?: string,
+): Promise<INodeListSearchResult> {
+	const resource = this.getNodeParameter('resource') as string;
+	return await searchIn.call(
+		this,
+		getDoctype(resource),
+		TITLE_FIELD_BY_RESOURCE[resource as FrappeHelpdeskResource],
+		filter,
+		paginationToken,
+	);
+}
+
+/**
+ * Builds the search method of a Link field, bound to the doctype that field points at.
+ *
+ * One method per target doctype, and not a single generic one, because n8n names the method
+ * in the field (`searchListMethod`) and calls it with nothing but the filter and the
+ * pagination token — it never says which field asked. `searchDocuments` gets away with a
+ * single method only because it can read the `resource` parameter.
+ */
+function linkSearch(doctype: string, titleField?: string) {
+	return async function (
+		this: ILoadOptionsFunctions,
+		filter?: string,
+		paginationToken?: string,
+	): Promise<INodeListSearchResult> {
+		return await searchIn.call(this, doctype, titleField, filter, paginationToken);
+	};
+}
+
+/**
+ * Builds the dropdown method of a Link field pointing at a configuration doctype.
+ *
+ * Everything is fetched in one call — `limit_page_length: 0` — which is why this is reserved
+ * for lists an administrator maintains: a few dozen rows at most. Anything fed by daily
+ * activity gets `linkSearch` instead, so the filtering stays on Frappe's side.
+ *
+ * `labelField` is for the doctypes autonamed after a code: `Loan Product` is its
+ * `product_code`, so the raw list would read `ZZ-R668593`. Like the search, a rejected label
+ * falls back to `name` alone rather than breaking the dropdown.
+ */
+function linkOptions(
+	doctype: string,
+	{ filters = {}, labelField }: { filters?: IDataObject; labelField?: string } = {},
+) {
+	return async function (this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+		const fetch = async (label: string | undefined): Promise<IDataObject[]> => {
+			const records = await frappeApiRequest.call<
+				ILoadOptionsFunctions,
+				[IHttpRequestMethods, string, IDataObject, IDataObject, number],
+				Promise<IDataObject[]>
+			>(
+				this,
+				'GET',
+				`/api/resource/${encodeURIComponent(doctype)}`,
+				{},
+				{
+					fields: label === undefined ? ['name'] : ['name', label],
+					filters,
+					limit_page_length: 0,
+				},
+				0,
+			);
+
+			return Array.isArray(records) ? records : [];
+		};
+
+		let effectiveLabel = labelField;
+		let records: IDataObject[];
+		if (effectiveLabel === undefined) {
+			records = await fetch(undefined);
+		} else {
+			try {
+				records = await fetch(effectiveLabel);
+			} catch {
+				effectiveLabel = undefined;
+				records = await fetch(undefined);
+			}
+		}
+
+		return records
+			.map((record) => {
+				const name = String(record.name);
+				const label = effectiveLabel === undefined ? undefined : record[effectiveLabel];
+				return {
+					name: typeof label === 'string' && label !== '' ? `${name} — ${label}` : name,
+					value: name,
+				};
+			})
+			.sort((a, b) => a.name.localeCompare(b.name));
+	};
+}
+
+/**
+ * Replaces the resource-locator objects a collection carries with the identifiers they hold.
+ *
+ * A locator is stored as `{ __rl: true, mode, value }`. Reading a whole collection with
+ * `getNodeParameter('additionalFields', i)` returns those objects untouched: n8n only
+ * unwraps a locator when the parameter is addressed by its own path with
+ * `extractValue: true`, which would mean one call per field. Spreading the collection into
+ * the request body without this would send Frappe an object where it expects a name.
+ *
+ * Only the stored `value` is taken. That is exact here because the manual mode of these
+ * locators is a plain string with no `extractValue` regex of its own — the day one gains
+ * one, it has to be read through `getNodeParameter` instead.
+ */
+function unwrapResourceLocators(collection: IDataObject): IDataObject {
+	const unwrapped: IDataObject = {};
+
+	for (const [key, value] of Object.entries(collection)) {
+		const isLocator =
+			value !== null && typeof value === 'object' && '__rl' in (value as IDataObject);
+		unwrapped[key] = isLocator ? ((value as IDataObject).value as IDataObject[string]) : value;
+	}
+
+	return unwrapped;
+}
+
 export class FrappeHelpdesk implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Frappe Helpdesk',
@@ -190,6 +430,10 @@ export class FrappeHelpdesk implements INodeType {
 		// checks that `icon` is not a string literal, it never compares the two files, so the
 		// { light, dark } form with the same path twice would satisfy it without changing a
 		// single pixel on screen.
+		//
+		// Should monochrome variants ever be reintroduced: in n8n the key names the UI
+		// theme, not the ink colour. A white icon belongs under `dark`, a black one under
+		// `light` — the other way round makes them invisible.
 		// eslint-disable-next-line @n8n/community-nodes/icon-prefer-themed-variants
 		icon: 'file:../../icons/frappe-helpdesk.svg',
 		group: ['transform'],
@@ -232,6 +476,14 @@ export class FrappeHelpdesk implements INodeType {
 	};
 
 	methods = {
+		listSearch: {
+			searchDocuments,
+			// Doctypes fed by daily activity. `Contact` is named after the person and
+			// `HD Customer` after the company, so neither needs a title field.
+			searchContact: linkSearch('Contact'),
+			searchCountry: linkSearch('Country'),
+			searchHdCustomer: linkSearch('HD Customer'),
+		},
 		loadOptions: {
 			/**
 			 * Ticket statuses, read from the site.
@@ -265,41 +517,26 @@ export class FrappeHelpdesk implements INodeType {
 					.map((record) => ({ name: String(record.name), value: String(record.name) }));
 			},
 
-			async getTicketPriorities(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				const records = await loadRecords(this, getDoctype('ticketPriority'), ['name'], {
-					disabled: 0,
-				});
-				return toOptions(records, (record) => String(record.name));
-			},
+			getTicketPriorities: linkOptions(getDoctype('ticketPriority'), { filters: { disabled: 0 } }),
 
-			async getTicketTypes(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				const records = await loadRecords(this, getDoctype('ticketType'), ['name'], {
-					disabled: 0,
-				});
-				return toOptions(records, (record) => String(record.name));
-			},
+			getTicketTypes: linkOptions(getDoctype('ticketType'), { filters: { disabled: 0 } }),
 
-			async getTeams(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				const records = await loadRecords(this, getDoctype('team'), ['name'], { disabled: 0 });
-				return toOptions(records, (record) => String(record.name));
-			},
+			getTeams: linkOptions(getDoctype('team'), { filters: { disabled: 0 } }),
 
 			/**
 			 * Agents, keyed by the email Frappe assigns against.
 			 *
 			 * `HD Agent` sets its own `name` to the linked `User` in `before_save`, so the document
-			 * name *is* the email `assign_agent` and `HD Team.users` expect.
+			 * name *is* the email `assign_agent` and `HD Team.users` expect. `agent_name` is shown
+			 * beside it, in the `id — label` shape every other picker of the family uses.
 			 */
-			async getAgents(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				const records = await loadRecords(this, AGENT_DOCTYPE, ['name', 'agent_name'], {
-					is_active: 1,
-				});
-				return toOptions(records, (record) =>
-					typeof record.agent_name === 'string' && record.agent_name !== ''
-						? `${record.agent_name} (${String(record.name)})`
-						: String(record.name),
-				);
-			},
+			getAgents: linkOptions(AGENT_DOCTYPE, {
+				filters: { is_active: 1 },
+				labelField: 'agent_name',
+			}),
+
+			/** `HD Service Level Agreement` is named after its own title. */
+			getServiceLevelAgreements: linkOptions('HD Service Level Agreement'),
 		},
 	};
 
@@ -316,12 +553,23 @@ export class FrappeHelpdesk implements INodeType {
 			try {
 				if (operation === 'create' || operation === 'update') {
 					const collectionName = operation === 'create' ? 'additionalFields' : 'updateFields';
-					const body = { ...(this.getNodeParameter(collectionName, i, {}) as IDataObject) };
+					const body = unwrapResourceLocators(
+						this.getNodeParameter(collectionName, i, {}) as IDataObject,
+					);
 
 					// Required fields are exposed at the top level, outside the collection.
 					if (operation === 'create') {
 						for (const field of REQUIRED_ON_CREATE[resource] ?? []) {
 							body[field] = this.getNodeParameter(field, i);
+						}
+
+						// Promoted optional fields: an untouched one reads as `''`, which Frappe
+						// would store as a blank. Left out rather than sent — see PROMOTED_ON_CREATE.
+						for (const field of PROMOTED_ON_CREATE[resource] ?? []) {
+							const value = this.getNodeParameter(field, i, '');
+							if (value !== '' && value !== null && value !== undefined) {
+								body[field] = value;
+							}
 						}
 					}
 
@@ -331,7 +579,9 @@ export class FrappeHelpdesk implements INodeType {
 						const created = await frappeApiRequest.call(this, 'POST', basePath, body, {}, i);
 						returnData.push({ json: created as IDataObject, pairedItem: { item: i } });
 					} else {
-						const documentId = this.getNodeParameter('documentId', i) as string;
+						const documentId = this.getNodeParameter('documentId', i, undefined, {
+							extractValue: true,
+						}) as string;
 						const updated = await frappeApiRequest.call(
 							this,
 							'PUT',
@@ -343,7 +593,9 @@ export class FrappeHelpdesk implements INodeType {
 						returnData.push({ json: updated as IDataObject, pairedItem: { item: i } });
 					}
 				} else if (operation === 'get') {
-					const documentId = this.getNodeParameter('documentId', i) as string;
+					const documentId = this.getNodeParameter('documentId', i, undefined, {
+						extractValue: true,
+					}) as string;
 					const document = await frappeApiRequest.call(
 						this,
 						'GET',
@@ -354,7 +606,9 @@ export class FrappeHelpdesk implements INodeType {
 					);
 					returnData.push({ json: document as IDataObject, pairedItem: { item: i } });
 				} else if (operation === 'delete') {
-					const documentId = this.getNodeParameter('documentId', i) as string;
+					const documentId = this.getNodeParameter('documentId', i, undefined, {
+						extractValue: true,
+					}) as string;
 					await frappeApiRequest.call(
 						this,
 						'DELETE',
@@ -371,7 +625,9 @@ export class FrappeHelpdesk implements INodeType {
 					// No custom endpoint for this one: `helpdesk/api/` exposes nothing of the sort,
 					// and the status transition lives in HD Ticket's own `on_update`. A plain field
 					// update therefore triggers the SLA recomputation and the feedback email.
-					const documentId = this.getNodeParameter('documentId', i) as string;
+					const documentId = this.getNodeParameter('documentId', i, undefined, {
+						extractValue: true,
+					}) as string;
 					const status = this.getNodeParameter('status', i) as string;
 
 					const updated = await frappeApiRequest.call(
@@ -384,7 +640,9 @@ export class FrappeHelpdesk implements INodeType {
 					);
 					returnData.push({ json: updated as IDataObject, pairedItem: { item: i } });
 				} else if (operation === 'assign') {
-					const documentId = this.getNodeParameter('documentId', i) as string;
+					const documentId = this.getNodeParameter('documentId', i, undefined, {
+						extractValue: true,
+					}) as string;
 					const agent = this.getNodeParameter('agent', i) as string;
 					const assignOptions = this.getNodeParameter('assignOptions', i, {}) as IDataObject;
 					const path = `${basePath}/${encodeURIComponent(documentId)}`;

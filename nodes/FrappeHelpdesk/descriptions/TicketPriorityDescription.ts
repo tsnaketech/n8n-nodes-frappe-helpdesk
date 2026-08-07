@@ -21,8 +21,11 @@ import { documentIdField, getManyFields, readOperationsFor } from './CommonDescr
  */
 export const ticketPriorityDescription: INodeProperties[] = [
 	readOperationsFor('ticketPriority', 'ticket priority', 'ticket priorities'),
-	documentIdField('ticketPriority', 'The priority\'s "name", which is its label, e.g. Urgent.', [
-		'get',
-	]),
+	documentIdField(
+		'ticketPriority',
+		'The priority\'s "name", which is its label, e.g. Urgent.',
+		['get'],
+		'Urgent',
+	),
 	...getManyFields('ticketPriority', 'name,description,disabled'),
 ];
